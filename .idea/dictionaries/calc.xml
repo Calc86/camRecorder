@@ -1,0 +1,35 @@
+<component name="ProjectDictionaryState">
+  <dictionary name="calc">
+    <words>
+      <w>addrtype</w>
+      <w>codelens</w>
+      <w>crlf</w>
+      <w>csrc</w>
+      <w>endian</w>
+      <w>fmtp</w>
+      <w>framerate</w>
+      <w>keywds</w>
+      <w>luma</w>
+      <w>maxptime</w>
+      <w>memcpy</w>
+      <w>ncodes</w>
+      <w>nettype</w>
+      <w>nsymbols</w>
+      <w>pdfs</w>
+      <w>proto</w>
+      <w>ptime</w>
+      <w>quant</w>
+      <w>quantizer</w>
+      <w>quantizers</w>
+      <w>recvonly</w>
+      <w>rtcp</w>
+      <w>rtpmap</w>
+      <w>sdplang</w>
+      <w>sendonly</w>
+      <w>sendrecv</w>
+      <w>sess</w>
+      <w>ssrc</w>
+      <w>unicast</w>
+    </words>
+  </dictionary>
+</component>

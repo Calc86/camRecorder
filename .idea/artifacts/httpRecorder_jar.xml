@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="httpRecorder:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/httpRecorder_jar</output-path>
+    <root id="archive" name="httpRecorder.jar">
+      <element id="module-output" name="httpRecorder" />
+    </root>
+  </artifact>
+</component>

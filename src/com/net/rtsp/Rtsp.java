@@ -1,26 +1,28 @@
 package com.net.rtsp;
 
-import com.net.rtp.H264RTP;
-import com.net.rtp.JpegRTP;
+import com.net.rtp.RTCP;
 import com.net.rtp.RTP;
 import com.net.utils.BIT;
+import org.apache.commons.lang3.NotImplementedException;
 
 import java.io.*;
 import java.net.*;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * Created by calc on 14.07.14.
  *
  */
 public class Rtsp {
+    public static final int PACKET_BUFFER_COUNT = 100;
     public static final int DEFAULT_RTSP_PORT = 554;
-    private URI uri;
+    public static final int CR = 13;
+    public static final int LF = 10;
+    public static final String CRLF = "\r\n";
 
+    private URI uri;
     private final static String PROTOCOL = "RTSP/1.0";
     private final static String USER_AGENT = "LibVLC/2.1.4 (LIVE555 Streaming Media v2014.01.21)";
-    public static final String CRLF = "\r\n";
 
     private InputStream in;
     private OutputStream out;
@@ -29,8 +31,16 @@ public class Rtsp {
     private Reply lastReply;
 
     private boolean debug = false;
-
     public boolean stop = false;
+    private boolean isInterleaved = false;
+    private Process process = null;
+
+    private int[] map;
+    private List<Integer> SSRCs = new ArrayList<Integer>() ;
+
+    public void setMap(int[] map) {
+        this.map = map;
+    }
 
     public void connect(URI uri) throws IOException {
         this.uri = uri;
@@ -54,7 +64,7 @@ public class Rtsp {
                 "cSeq: " + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                         CRLF;
-        write(packet);
+        send(packet);
     }
 
     public SDP describe() throws IOException {
@@ -64,7 +74,7 @@ public class Rtsp {
                 "Accept: application/sdp" + CRLF +
                 CRLF;
 
-        write(packet);
+        send(packet);
 
         String response = lastReply.getReply();
 
@@ -115,6 +125,7 @@ public class Rtsp {
 
         String transport;
         if(interleaved){
+            isInterleaved = true;
             transport = "RTP/AVP/TCP;unicast;interleaved=" + map1 + "-" + map2;
         }
         else{
@@ -127,10 +138,10 @@ public class Rtsp {
                 "Transport: " + transport + CRLF +
                 session +
                 CRLF;
-        write(packet);
+        send(packet);
     }
 
-    public void play(String session) throws IOException {
+    public void play(String session, OutputStream[] os) throws IOException {
         sequence++;
 
         String packet = "PLAY " + uri + " " + PROTOCOL + CRLF +
@@ -139,7 +150,26 @@ public class Rtsp {
                 "Session: " + session + CRLF +
                 "Range: npt=0.000-" + CRLF +
                 CRLF;
-        write(packet);
+        send(packet);
+
+        if(isInterleaved){
+            process = new InterleavedProcess();
+        }
+        else
+            process = new NonInterleavedProcess();
+
+        process.processAll(os);
+    }
+
+    public void getParameter(String session) throws IOException {
+        sequence++;
+
+        String packet = "GET_PARAMETER " + uri + " " + PROTOCOL + CRLF +
+                "cSeq: " + sequence + CRLF +
+                "User-Agent: " + USER_AGENT + CRLF +
+                "Session: " + session + CRLF +
+                CRLF;
+        send(packet);
     }
 
     private byte[] read(int length) throws IOException {
@@ -161,21 +191,16 @@ public class Rtsp {
         while(true){
             buffer[readed++] = (byte)in.read();
 
-
-            if(readed >=4){
+            if(readed >= 4){
                 if(
-                    buffer[readed-4] == 13 &&
-                    buffer[readed-3] == 10 &&
-                    buffer[readed-2] == 13 &&
-                    buffer[readed-1] == 10
+                    buffer[readed-4] == CR &&
+                    buffer[readed-3] == LF &&
+                    buffer[readed-2] == CR &&
+                    buffer[readed-1] == LF
                 )
                     break;
                 if(readed >= buffer.length)
-                {
-                    System.err.println("readed too many bytes: " + buffer.length);
-                    lastReply = null;
-                    return;
-                }
+                    throw new IOException("readed too many bytes: " + buffer.length + " readed: " + readed);
             }
         }
 
@@ -184,7 +209,7 @@ public class Rtsp {
         if(debug) System.out.println(reply);
     }
 
-    private void write(String packet) throws IOException {
+    private void send(String packet) throws IOException {
         sequence++;
         if(debug) System.out.println(packet);
         out.write(packet.getBytes());
@@ -192,66 +217,175 @@ public class Rtsp {
         readReply();
     }
 
-    public void nonInterleavedProcess(DatagramSocket s, OutputStream out) throws IOException {
-        byte[] buffer = RTP.createBuffer();
+    public interface Process{
+        public void processAll(OutputStream[] os) throws IOException;
+        public void stop();
+    }
 
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+    public class NonInterleavedProcess implements Process{
+        DatagramSocket[] ss;
+        Thread[] ts;
 
-        TreeMap<Integer, byte[]> sequencedPackets = new TreeMap<Integer, byte[]>();
-        int preFill = 100;   //буфер
-        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-        int seqFloor = 0;   //"пол" - минимальное значение, до которого пакеты откидываются (нам уже не интересны)
+        @Override
+        public void processAll(OutputStream[] os) throws SocketException {
+            ss = new DatagramSocket[map.length];
 
-        int count = 0;
-        while(!stop){
-            try {
-                s.receive(packet);
-            } catch (IOException e) {
-                //flush treeMap to out on close socket
-                for(Map.Entry<Integer, byte[]> entry : sequencedPackets.entrySet()){
-                    System.out.println(e.getMessage());
-                    if(out != null) out.write(entry.getValue());
-                }
-                break; // exit from while
+            for (int i = 0; i < map.length; i++) {
+                ss[i] = new DatagramSocket(map[i]);
             }
 
-            RTP rtp = new RTP(buffer, packet.getLength());
+            ts = new Thread[map.length];
+            for (int i = 0; i < map.length; i++) {
+                ts[i] = new Thread(new UDPThread(this, ss[i], os[i]));
+            }
 
-            if(rtp.getPayloadType() == RTP.TYPE_H264){
-                H264RTP h264rtp = new H264RTP(rtp);
-                h264rtp.writeRawH264toStream(byteOut);  //пишем пакет в byteArray
-                if(rtp.getSequence() > seqFloor){       //все пакеты меньше "пола" тупо пропускаем...
+            for (int i = 0; i < map.length; i++) {
+                ts[i].start();
+            }
+        }
+
+        public void process(DatagramSocket s, OutputStream out) throws IOException {
+            byte[] buffer = RTP.createBuffer();
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+            TreeMap<Integer, byte[]> sequencedPackets = new TreeMap<Integer, byte[]>();
+            ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+            int seqFloor = 0;   //"пол" - минимальное значение, до которого пакеты откидываются (нам уже не интересны)
+
+            while(!stop){
+                try {
+                    s.receive(packet);
+                } catch (IOException e) {
+                    System.out.println(e.getMessage());
+                    break;
+                }
+
+                //RTP rtp = new RTP(buffer, packet.getLength());
+                RTP rtp;
+                try {
+                    rtp = (new RTP(buffer, packet.getLength())).getRtpByPayload();
+                } catch (NotImplementedException e){
+                    //System.err.println(e.getMessage());
+                    continue;
+                }
+
+                if(rtp.getPayloadType() == RTP.TYPE_RTCP){
+                    RTCP rtcp = (RTCP)rtp;
+                    rtcp.justCopy();
+                    DatagramPacket reply = new DatagramPacket(rtcp.getBuffer(), 52, packet.getAddress(), packet.getPort());
+                    s.send(reply);
+                }
+
+                if(out != null){
+                    rtp.writeRawToStream(byteOut);
+
+                    //if(rtp.getSequence() > seqFloor){       //все пакеты меньше "пола" тупо пропускаем...
                     byteOut.flush();
                     sequencedPackets.put(rtp.getSequence(), byteOut.toByteArray()); //сохраняем пакет в сортировочную машину.
                     byteOut.reset();
-                }
+                    //}
 
-                //вообще нужно подумать об сборке полного фрейма и записи его в это дерево.
-                if(sequencedPackets.size() > preFill){  //preFill - буфер для "сортировки" входящих пакетов
-                    //sequencedPackets.floorKey();
-                    seqFloor = sequencedPackets.firstKey();     //получить первый пакет
-                    byte[] b = sequencedPackets.get(seqFloor);  //вынуть данные
-                    if(out != null) out.write(b);               //записать в out stream
-                    sequencedPackets.remove(seqFloor);          //удалить из списка
-                }   //при стопе теряем все оставшиеся пакеты...)
+                    if(sequencedPackets.size() > PACKET_BUFFER_COUNT){
+                        //Если прошел круг (65536), то "пол" будет явно больше первого элемента
+                        // 65534 и 1 && 1 > 100 .... 65535 и 100
+                        if(seqFloor > sequencedPackets.firstKey()){
+                            //буферим
+                            if(sequencedPackets.size() > PACKET_BUFFER_COUNT * 2){
+                                SortedMap<Integer, byte[]> tail = sequencedPackets.tailMap(seqFloor);   //всё что выше пола
+                                //пишем хвост
+                                for(Map.Entry<Integer, byte[]> entry : tail.entrySet()){
+                                    out.write(entry.getValue());
+                                }
+                                System.out.println("finish");
+                                tail.entrySet().clear();    //чистим хвост
+                                seqFloor = 0;   //сброс пола
+                            }
+                        }
+                        else
+                        {
+                            seqFloor = sequencedPackets.firstKey();     //получить ключ первого пакет
+                            byte[] b = sequencedPackets.get(seqFloor);  //вынуть данные
+                    /*if(out != null)*/ out.write(b);               //записать в out stream
+                            sequencedPackets.remove(seqFloor);          //удалить из списка
+                        }
+                    }
+                }
             }
-            /*if(rtp.getPayloadType() == RTP.TYPE_JPEG){
-                JpegRTP jpegrtp = new JpegRTP(rtp);
-                jpegrtp.writeRawJPEGtoStream(out);
+            //flush treeMap to out on close socket
+            for(Map.Entry<Integer, byte[]> entry : sequencedPackets.entrySet()){
+                if(out != null) out.write(entry.getValue());
             }
-            else {
-                //unknown type
-                //just write...
-                System.err.println("Unknown rtp payload type: " + rtp.getPayloadType());
-                out.write(buffer, rtp.getPayloadStart(), rtp.getPayloadLength());
-            }*/
+        }
+
+        public void stop() {
+            for(DatagramSocket s : ss){
+                s.close();
+            }
+
+            for(Thread t : ts){
+                try {
+                    t.join();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
-    public void process(OutputStream out) throws IOException {
-        OutputStream[] os = new OutputStream[1];
-        os[0] = out;
-        process(os);
+    public class InterleavedProcess implements Process{
+        Thread t;
+
+        @Override
+        public void processAll(final OutputStream[] os) throws IOException {
+            t = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        process(os);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+
+            t.start();
+        }
+
+        public void process(OutputStream[] os) throws IOException {
+            stop = false;
+
+            byte[] buffer = RTP.createBuffer();
+
+            while(!stop){
+                RTSPInterleavedFrame frame = new RTSPInterleavedFrame(in);
+                byte channel = frame.getChannel();
+
+                //по любому читаем rtp пакет
+                RTP rtp;
+                try {
+                    rtp = (new RTP(in, buffer, frame.getLength())).getRtpByPayload();
+                } catch (NotImplementedException e) {
+                    continue;
+                }
+
+                if(os.length <= channel){
+                    System.err.println("Нужно больше out стримов: " + channel);
+                    continue;
+                }
+
+                if(os[channel] == null) continue;
+
+                rtp.writeRawToStream(os[channel]);
+            }
+        }
+
+        @Override
+        public void stop() {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     class RTSPInterleavedFrame{
@@ -276,10 +410,6 @@ public class Rtsp {
             }
         }
 
-        /*public byte getMagic(){
-            return buffer[0];
-        }*/
-
         public byte getChannel(){
             return buffer[1];
         }
@@ -289,52 +419,18 @@ public class Rtsp {
         }
     }
 
-    /**
-     *
-     * @param os array of output streams, 1 stream for channel
-     */
-    public void process(OutputStream[] os) throws IOException {
-        stop = false;
-
-        byte[] buffer = RTP.createBuffer();
-
-        while(!stop){
-            RTSPInterleavedFrame frame = new RTSPInterleavedFrame(in);
-            byte channel = frame.getChannel();
-            int length = frame.getLength();
-
-            RTP rtp = new RTP(in, buffer, length);
-
-            if(channel == 0 && os.length > 0 && os[0] != null){
-                //H264RTP rtp = new H264RTP(in, buffer, length);
-                if(rtp.getPayloadType() == RTP.TYPE_H264){
-                    H264RTP h264rtp = new H264RTP(rtp);
-                    h264rtp.writeRawH264toStream(os[channel]);
-                }
-                if(rtp.getPayloadType() == RTP.TYPE_JPEG){
-                    JpegRTP jpegrtp = new JpegRTP(rtp);
-                    jpegrtp.writeRawJPEGtoStream(os[channel]);
-                }
-                else {
-                    //unknown type
-                    //just write...
-                    System.err.println("Unknown rtp payload type: " + rtp.getPayloadType());
-                    os[channel].write(buffer, rtp.getPayloadStart(), rtp.getPayloadLength());
-                }
-            }
-            else if(os.length > channel && os[channel] != null){
-                //RTP rtp = new RTP(in, buffer, length);
-                os[channel].write(buffer, rtp.getPayloadStart(), rtp.getPayloadLength());
-            } /*else{
-               new RTP(in, buffer, length); //just read rtp packet from stream
-            }*/
-        }
-        in.close();
-        out.close();
-    }
-
     public void stop(){
         stop = true;
+
+        try {
+            //Закрыть сокеты
+            in.close();
+            out.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        process.stop();
     }
 
     public Reply getLastReply() {
@@ -342,20 +438,20 @@ public class Rtsp {
     }
 
     public class UDPThread implements Runnable{
-        private Rtsp rtsp;
+        private NonInterleavedProcess process;
         private DatagramSocket s;
         private OutputStream out;
 
-        private UDPThread(Rtsp rtsp, DatagramSocket s, OutputStream out) {
+        private UDPThread(NonInterleavedProcess process, DatagramSocket s, OutputStream out) {
             this.s = s;
             this.out = out;
-            this.rtsp = rtsp;
+            this.process = process;
         }
 
         @Override
         public void run() {
             try {
-                rtsp.nonInterleavedProcess(s, out);
+                process.process(s, out);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -366,8 +462,9 @@ public class Rtsp {
         final Rtsp rtsp = new Rtsp();
 
         try {
-            rtsp.setDebug(true);
+            //rtsp.setDebug(true);
             //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_0"));
+            // cvlc -vvv --rtsp-tcp rtsp://10.113.151.152:554/tcp_live/profile_token_0 :sout=#rtp{sdp=rtsp://:8554/} :sout-keep
             rtsp.connect(new URI("rtsp://10.154.28.203:8554/"));
 
             rtsp.options();
@@ -381,17 +478,12 @@ public class Rtsp {
 
             int[] ports = {49501, 49502, 49503, 49504};
 
+            rtsp.setMap(ports);
             rtsp.setup(video, ports[0], ports[1], false, "");
             Reply reply = rtsp.getLastReply();
             String session = reply.getSession();
             System.out.println(session);
             rtsp.setup(audio, ports[2], ports[3], false, session);
-
-
-            DatagramSocket[] ss = new DatagramSocket[ports.length];
-            for (int i = 0; i < ports.length; i++) {
-                ss[i] = new DatagramSocket(ports[i]);
-            }
 
             File f = new File("udp.h264");
             FileOutputStream fOut = new FileOutputStream(f);
@@ -400,31 +492,14 @@ public class Rtsp {
 
             outs[0] = fOut;
 
-            Thread[] ts = new Thread[ports.length];
-            for (int i = 0; i < ports.length; i++) {
-                //ts[i] = new Thread(new Rtsp.UDPThread(null, null, null));
-                ts[i] = new Thread(rtsp.new UDPThread(rtsp, ss[i], outs[i]));
+            rtsp.play(session, outs);
+
+            for (int i = 0; i < 10; i++) {
+                Thread.sleep(55000);
+                rtsp.getParameter(session);
             }
 
-            for (int i = 0; i < ports.length; i++) {
-                ts[i].start();
-            }
-
-            rtsp.play(session);
-
-            Thread.sleep(5000);
-            System.out.println("time is out");
-
-            //rtsp.stop();
-
-            for(DatagramSocket s : ss){
-                //s.close();
-            }
-
-            for(Thread t : ts){
-                t.join();
-            }
-
+            rtsp.stop();
         } catch (IOException e) {
             e.printStackTrace();
         } catch (URISyntaxException e) {
@@ -457,26 +532,18 @@ public class Rtsp {
             System.out.println(session);
             rtsp.setup(audio, 2, 3, true, session);
 
-            rtsp.play(session);
-
             final FileOutputStream out = new FileOutputStream("0.h264");
 
-            Thread t = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        rtsp.process(out);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
+            OutputStream[] outs = new OutputStream[4];
 
-            t.start();
+            outs[0] = out;
+
+            rtsp.play(session, outs);
+
             Thread.sleep(5000);
             System.out.println("try to stop...");
             rtsp.stop();
-            t.join();
+
             out.close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -488,7 +555,7 @@ public class Rtsp {
     }
 
     public static void main(String[] args) {
-        //interleaved();
-        nonInterleaved();
+        interleaved();
+        //nonInterleaved();
     }
 }

@@ -1,9 +1,11 @@
 package com.net.rtp;
 
 import com.net.utils.BIT;
+import org.apache.commons.lang3.NotImplementedException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * Created by calc on 15.07.14.
@@ -13,6 +15,8 @@ public class RTP {
     public static final int MAX_RTP_PACKET_SIZE = 65536;
 
     public static final byte TYPE_JPEG = 26;    //rfc2435
+    //72-76	Reserved for RTCP conflict avoidance
+    public static final byte TYPE_RTCP = 72;
     public static final byte TYPE_DYNAMIC_96 = 96;    //rfc3551
     public static final byte TYPE_H264 = TYPE_DYNAMIC_96;
     public static final int RTP_HEADER_SIZE = 12;   //96 bits
@@ -51,6 +55,29 @@ public class RTP {
     public RTP(RTP rtp){
         length = rtp.getLength();
         packet = rtp.getBuffer();
+    }
+
+    /**
+     *
+     * @return класс, который обрабатывает определенный тип payload
+     * @throws NotImplementedException
+     */
+    public RTP getRtpByPayload() throws NotImplementedException {
+        switch (getPayloadType()){
+            case RTP.TYPE_H264:
+                return new H264RTP(this);
+            case RTP.TYPE_JPEG:
+                return new JpegRTP(this);
+            case RTP.TYPE_RTCP:
+                return new RTCP(this);
+            default:
+                throw new NotImplementedException("rtp type " + getPayloadType() + " not implemented");
+        }
+    }
+
+    public void writeRawToStream(OutputStream out) throws IOException {
+        System.err.println("NOTICE: Raw RTP payload write");
+        out.write(packet, getPayloadStart(), getPayloadLength());
     }
 
     public byte[] getBuffer() {

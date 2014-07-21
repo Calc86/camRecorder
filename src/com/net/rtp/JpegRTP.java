@@ -2,7 +2,7 @@ package com.net.rtp;
 
 import com.net.jpeg.JpegRfc2345;
 import com.net.utils.BIT;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -87,23 +87,21 @@ public class JpegRTP extends RTP {
             return JPEG_HEADER_SIZE;
     }
 
-    public int getJPEGPayloadStart(){
+    public int getJPEGPayloadStart() throws NotImplementedException {
         if(getType() < 64){
             return getPayloadStart() + getJpegPayloadOffset();
         }
         else{
-            System.err.println("jpeg type: " + getType() + " not implemented");
-            throw new NotImplementedException();
+            throw new NotImplementedException("jpeg type: " + getType() + " not implemented");
         }
     }
 
-    public int getJPEGPayloadLength(){
+    public int getJPEGPayloadLength() throws NotImplementedException {
         if(getType() < 64){
             return getPayloadLength() - getJpegPayloadOffset();
         }
         else{
-            System.err.println("jpeg type: " + getType() + " not implemented");
-            throw new NotImplementedException();
+            throw new NotImplementedException("jpeg type: " + getType() + " not implemented");
         }
     }
 
@@ -140,5 +138,10 @@ public class JpegRTP extends RTP {
         int l = rfc.MakeHeaders(h, 0, getType(), getWidth(), getHeight(), lqt, cqt, dri);
 
         return l;
+    }
+
+    @Override
+    public void writeRawToStream(OutputStream out) throws IOException {
+        writeRawJPEGtoStream(out);
     }
 }

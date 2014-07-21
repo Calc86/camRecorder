@@ -253,7 +253,6 @@ public class Rtsp {
         }
 
         public synchronized void change(final OutputStream out) throws IOException {
-            System.out.println("change");
             this.out.flush();
             this.out.close();
             this.out = out;

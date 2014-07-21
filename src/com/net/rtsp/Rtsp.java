@@ -36,13 +36,12 @@ public class Rtsp {
     private Process process = null;
 
     private int[] map;
-    private List<Integer> SSRCs = new ArrayList<Integer>() ;
 
     public void setMap(int[] map) {
         this.map = map;
     }
 
-    public void connect(URI uri) throws IOException {
+    public void connect(final URI uri) throws IOException {
         this.uri = uri;
         String host = uri.getHost();
         int port = uri.getPort();
@@ -141,7 +140,7 @@ public class Rtsp {
         send(packet);
     }
 
-    public void play(String session, OutputStream[] os) throws IOException {
+    public void play(final String session, final OutputStream[] os) throws IOException {
         sequence++;
 
         String packet = "PLAY " + uri + " " + PROTOCOL + CRLF +
@@ -153,15 +152,15 @@ public class Rtsp {
         send(packet);
 
         if(isInterleaved){
-            process = new InterleavedProcess();
+            process = new InterleavedProcess(os);
         }
         else
-            process = new NonInterleavedProcess();
+            process = new NonInterleavedProcess(os);
 
-        process.processAll(os);
+        process.processAll();
     }
 
-    public void getParameter(String session) throws IOException {
+    public void getParameter(final String session) throws IOException {
         sequence++;
 
         String packet = "GET_PARAMETER " + uri + " " + PROTOCOL + CRLF +
@@ -217,17 +216,70 @@ public class Rtsp {
         readReply();
     }
 
-    public interface Process{
-        public void processAll(OutputStream[] os) throws IOException;
-        public void stop();
+    public class OutputStreamHolder extends OutputStream {
+        volatile private OutputStream out;
+
+        public OutputStreamHolder(final OutputStream out) {
+            this.out = out;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            out.write(b);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            out.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            out.write(b, off, len);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            out.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            out.close();
+        }
+
+        public void setOut(OutputStream out) {
+            this.out = out;
+        }
+
+        public synchronized void change(final OutputStream out) throws IOException {
+            System.out.println("change");
+            this.out.flush();
+            this.out.close();
+            this.out = out;
+        }
     }
 
-    public class NonInterleavedProcess implements Process{
+    private abstract class Process{
+        protected Process(OutputStream[] os) {
+            this.os = os;
+        }
+
+        protected OutputStream[] os;
+        abstract public void processAll() throws IOException;
+        abstract public void stop();
+    }
+
+    private class NonInterleavedProcess extends Process{
         DatagramSocket[] ss;
         Thread[] ts;
 
+        public NonInterleavedProcess(OutputStream[] os) {
+            super(os);
+        }
+
         @Override
-        public void processAll(OutputStream[] os) throws SocketException {
+        public void processAll() throws SocketException {
             ss = new DatagramSocket[map.length];
 
             for (int i = 0; i < map.length; i++) {
@@ -236,7 +288,7 @@ public class Rtsp {
 
             ts = new Thread[map.length];
             for (int i = 0; i < map.length; i++) {
-                ts[i] = new Thread(new UDPThread(this, ss[i], os[i]));
+                ts[i] = new Thread(new UDPThread(this, ss[i], i));
             }
 
             for (int i = 0; i < map.length; i++) {
@@ -244,7 +296,7 @@ public class Rtsp {
             }
         }
 
-        public void process(DatagramSocket s, OutputStream out) throws IOException {
+        public void process(int channel) throws IOException {
             byte[] buffer = RTP.createBuffer();
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
             TreeMap<Integer, byte[]> sequencedPackets = new TreeMap<Integer, byte[]>();
@@ -253,8 +305,8 @@ public class Rtsp {
 
             while(!stop){
                 try {
-                    s.receive(packet);
-                } catch (IOException e) {
+                    ss[channel].receive(packet);
+                } catch (SocketException e) {
                     System.out.println(e.getMessage());
                     break;
                 }
@@ -272,47 +324,54 @@ public class Rtsp {
                     RTCP rtcp = (RTCP)rtp;
                     rtcp.justCopy();
                     DatagramPacket reply = new DatagramPacket(rtcp.getBuffer(), 52, packet.getAddress(), packet.getPort());
-                    s.send(reply);
+                    ss[channel].send(reply);
                 }
 
-                if(out != null){
-                    rtp.writeRawToStream(byteOut);
+                if(os[channel] == null) continue;
 
-                    //if(rtp.getSequence() > seqFloor){       //все пакеты меньше "пола" тупо пропускаем...
-                    byteOut.flush();
-                    sequencedPackets.put(rtp.getSequence(), byteOut.toByteArray()); //сохраняем пакет в сортировочную машину.
-                    byteOut.reset();
-                    //}
+                rtp.writeRawToStream(byteOut);
 
-                    if(sequencedPackets.size() > PACKET_BUFFER_COUNT){
-                        //Если прошел круг (65536), то "пол" будет явно больше первого элемента
-                        // 65534 и 1 && 1 > 100 .... 65535 и 100
-                        if(seqFloor > sequencedPackets.firstKey()){
-                            //буферим
-                            if(sequencedPackets.size() > PACKET_BUFFER_COUNT * 2){
-                                SortedMap<Integer, byte[]> tail = sequencedPackets.tailMap(seqFloor);   //всё что выше пола
-                                //пишем хвост
-                                for(Map.Entry<Integer, byte[]> entry : tail.entrySet()){
-                                    out.write(entry.getValue());
+                //if(rtp.getSequence() > seqFloor){       //все пакеты меньше "пола" тупо пропускаем...
+                byteOut.flush();
+                sequencedPackets.put(rtp.getSequence(), byteOut.toByteArray()); //сохраняем пакет в сортировочную машину.
+                byteOut.reset();
+                //}
+
+                if(sequencedPackets.size() > PACKET_BUFFER_COUNT){
+                    //Если прошел круг (65536), то "пол" будет явно больше первого элемента
+                    // 65534 и 1 && 1 > 100 .... 65535 и 100
+                    if(seqFloor > sequencedPackets.firstKey()){
+                        //буферим
+                        if(sequencedPackets.size() > PACKET_BUFFER_COUNT * 2){
+                            SortedMap<Integer, byte[]> tail = sequencedPackets.tailMap(seqFloor);   //всё что выше пола
+                            //пишем хвост
+                            for(Map.Entry<Integer, byte[]> entry : tail.entrySet()){
+                                synchronized (os[channel]){
+                                    os[channel].write(entry.getValue());
                                 }
-                                System.out.println("finish");
-                                tail.entrySet().clear();    //чистим хвост
-                                seqFloor = 0;   //сброс пола
                             }
+                            System.out.println("finish");
+                            tail.entrySet().clear();    //чистим хвост
+                            seqFloor = 0;   //сброс пола
                         }
-                        else
-                        {
-                            seqFloor = sequencedPackets.firstKey();     //получить ключ первого пакет
-                            byte[] b = sequencedPackets.get(seqFloor);  //вынуть данные
-                    /*if(out != null)*/ out.write(b);               //записать в out stream
-                            sequencedPackets.remove(seqFloor);          //удалить из списка
+                    }
+                    else
+                    {
+                        seqFloor = sequencedPackets.firstKey();     //получить ключ первого пакет
+                        byte[] b = sequencedPackets.get(seqFloor);  //вынуть данные
+                        synchronized (os[channel]){
+                            /*if(out != null)*/
+                            os[channel].write(b);               //записать в out stream
                         }
+                        sequencedPackets.remove(seqFloor);          //удалить из списка
                     }
                 }
             }
             //flush treeMap to out on close socket
             for(Map.Entry<Integer, byte[]> entry : sequencedPackets.entrySet()){
-                if(out != null) out.write(entry.getValue());
+                synchronized (os[channel]){
+                    if(os[channel] != null) os[channel].write(entry.getValue());
+                }
             }
         }
 
@@ -331,16 +390,20 @@ public class Rtsp {
         }
     }
 
-    public class InterleavedProcess implements Process{
+    private class InterleavedProcess extends Process{
         Thread t;
 
+        public InterleavedProcess(OutputStream[] os) {
+            super(os);
+        }
+
         @Override
-        public void processAll(final OutputStream[] os) throws IOException {
+        public void processAll() throws IOException {
             t = new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        process(os);
+                        process();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -350,13 +413,20 @@ public class Rtsp {
             t.start();
         }
 
-        public void process(OutputStream[] os) throws IOException {
+        public void process() throws IOException {
             stop = false;
 
             byte[] buffer = RTP.createBuffer();
 
             while(!stop){
-                RTSPInterleavedFrame frame = new RTSPInterleavedFrame(in);
+                RTSPInterleavedFrame frame = null;
+                try {
+                    frame = new RTSPInterleavedFrame(in);
+                } catch (SocketException e) {
+                    //socket closed?
+                    System.err.println(e.getMessage());
+                    break;
+                }
                 byte channel = frame.getChannel();
 
                 //по любому читаем rtp пакет
@@ -365,6 +435,10 @@ public class Rtsp {
                     rtp = (new RTP(in, buffer, frame.getLength())).getRtpByPayload();
                 } catch (NotImplementedException e) {
                     continue;
+                } catch (SocketException e) {
+                    //socket closed?
+                    System.err.println(e.getMessage());
+                    break;
                 }
 
                 if(os.length <= channel){
@@ -374,7 +448,9 @@ public class Rtsp {
 
                 if(os[channel] == null) continue;
 
-                rtp.writeRawToStream(os[channel]);
+                synchronized (os[channel]){
+                    rtp.writeRawToStream(os[channel]);
+                }
             }
         }
 
@@ -388,7 +464,7 @@ public class Rtsp {
         }
     }
 
-    class RTSPInterleavedFrame{
+    private class RTSPInterleavedFrame{
 
         private byte[] buffer = new byte[4];
 
@@ -437,21 +513,21 @@ public class Rtsp {
         return lastReply;
     }
 
-    public class UDPThread implements Runnable{
+    private class UDPThread implements Runnable{
         private NonInterleavedProcess process;
         private DatagramSocket s;
-        private OutputStream out;
+        private int channel;
 
-        private UDPThread(NonInterleavedProcess process, DatagramSocket s, OutputStream out) {
+        private UDPThread(NonInterleavedProcess process, DatagramSocket s, int channel) {
             this.s = s;
-            this.out = out;
+            this.channel = channel;
             this.process = process;
         }
 
         @Override
         public void run() {
             try {
-                process.process(s, out);
+                process.process(channel);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -485,19 +561,26 @@ public class Rtsp {
             System.out.println(session);
             rtsp.setup(audio, ports[2], ports[3], false, session);
 
-            File f = new File("udp.h264");
+            File f = new File("0.udp");
             FileOutputStream fOut = new FileOutputStream(f);
 
             OutputStream[] outs = new OutputStream[ports.length];
+            OutputStreamHolder oh = rtsp.new OutputStreamHolder(fOut);
 
-            outs[0] = fOut;
+            //outs[0] = fOut;
+            outs[0] = oh;
 
             rtsp.play(session, outs);
 
-            for (int i = 0; i < 10; i++) {
+            for (int i = 1; i < 60; i++) {
+                Thread.sleep(500);
+                oh.change(new FileOutputStream(i + ".udp"));
+            }
+
+            /*for (int i = 0; i < 10; i++) {
                 Thread.sleep(55000);
                 rtsp.getParameter(session);
-            }
+            }*/
 
             rtsp.stop();
         } catch (IOException e) {
@@ -532,15 +615,20 @@ public class Rtsp {
             System.out.println(session);
             rtsp.setup(audio, 2, 3, true, session);
 
-            final FileOutputStream out = new FileOutputStream("0.h264");
+            final FileOutputStream out = new FileOutputStream("0.tcp");
 
             OutputStream[] outs = new OutputStream[4];
+            OutputStreamHolder oh = rtsp.new OutputStreamHolder(out);
 
-            outs[0] = out;
+            outs[0] = oh;
 
             rtsp.play(session, outs);
 
-            Thread.sleep(5000);
+            for (int i = 1; i < 6; i++) {
+                Thread.sleep(5000);
+                oh.change(new FileOutputStream(i + ".tcp"));
+            }
+
             System.out.println("try to stop...");
             rtsp.stop();
 

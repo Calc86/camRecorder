@@ -2,7 +2,7 @@ package com.net.rtp;
 
 import com.net.h264.FUHeader;
 import com.net.h264.NAL;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -52,8 +52,7 @@ public class H264RTP extends RTP {
             case NAL.PPS:
                 return super.getPayloadStart();
             default:
-                System.err.println("NAL type " + getNAL().getType() + " not implemented");
-                throw new NotImplementedException();
+                throw new NotImplementedException("NAL type " + getNAL().getType() + " not implemented");
         }
     }
 
@@ -65,8 +64,7 @@ public class H264RTP extends RTP {
             case NAL.PPS:
                 return super.getPayloadLength();
             default:
-                System.err.println("NAL type " + getNAL().getType() + " not implemented");
-                throw new NotImplementedException();
+                throw new NotImplementedException("NAL type " + getNAL().getType() + " not implemented");
         }
     }
 
@@ -77,7 +75,7 @@ public class H264RTP extends RTP {
         return nal;
     }
 
-    public void writeRawH264toStream(OutputStream out) throws IOException {
+    public void writeRawH264toStream(OutputStream out) throws IOException, NotImplementedException {
         switch (nal.getType()){
             case NAL.FU_A:    //FU-A, 5.8.  Fragmentation Units (FUs)/rfc6184
                 FUHeader fu = getFUHeader();
@@ -98,8 +96,12 @@ public class H264RTP extends RTP {
                 out.write(getBuffer(), getPayloadStart(), getPayloadLength());
                 break;
             default:
-                System.err.println("NAL type " + getNAL().getType() + " not implemented");
-                throw new NotImplementedException();
+                throw new NotImplementedException("NAL type " + getNAL().getType() + " not implemented");
         }
+    }
+
+    @Override
+    public void writeRawToStream(OutputStream out) throws IOException {
+        writeRawH264toStream(out);
     }
 }

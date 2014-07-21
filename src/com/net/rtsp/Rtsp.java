@@ -288,7 +288,7 @@ public class Rtsp {
 
             ts = new Thread[map.length];
             for (int i = 0; i < map.length; i++) {
-                ts[i] = new Thread(new UDPThread(this, ss[i], i));
+                ts[i] = new Thread(new UDPThread(this, i));
             }
 
             for (int i = 0; i < map.length; i++) {
@@ -350,7 +350,6 @@ public class Rtsp {
                                     os[channel].write(entry.getValue());
                                 }
                             }
-                            System.out.println("finish");
                             tail.entrySet().clear();    //чистим хвост
                             seqFloor = 0;   //сброс пола
                         }
@@ -419,7 +418,7 @@ public class Rtsp {
             byte[] buffer = RTP.createBuffer();
 
             while(!stop){
-                RTSPInterleavedFrame frame = null;
+                RTSPInterleavedFrame frame;
                 try {
                     frame = new RTSPInterleavedFrame(in);
                 } catch (SocketException e) {
@@ -515,11 +514,9 @@ public class Rtsp {
 
     private class UDPThread implements Runnable{
         private NonInterleavedProcess process;
-        private DatagramSocket s;
         private int channel;
 
-        private UDPThread(NonInterleavedProcess process, DatagramSocket s, int channel) {
-            this.s = s;
+        private UDPThread(NonInterleavedProcess process, int channel) {
             this.channel = channel;
             this.process = process;
         }
@@ -572,8 +569,8 @@ public class Rtsp {
 
             rtsp.play(session, outs);
 
-            for (int i = 1; i < 60; i++) {
-                Thread.sleep(500);
+            for (int i = 1; i < 6; i++) {
+                Thread.sleep(5000);
                 oh.change(new FileOutputStream(i + ".udp"));
             }
 
@@ -643,7 +640,7 @@ public class Rtsp {
     }
 
     public static void main(String[] args) {
-        interleaved();
-        //nonInterleaved();
+        //interleaved();
+        nonInterleaved();
     }
 }

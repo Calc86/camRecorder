@@ -24,6 +24,28 @@ public class BIT {
     public static final int RFC_P6 = 0x02;
     public static final int RFC_P7 = 0x01;
 
+    public static final int HI_BYTE = 0xFF00;
+    public static final int LO_BYTE = 0x00FF;
+
+    public static final int HI_WORD = 0xFFFF0000;
+    public static final int LO_WORD = 0x0000FFFF;
+
+    public static byte HiByte(int num){
+        return (byte)((num & HI_BYTE) >>> 8);
+    }
+
+    public static byte LoByte(int num){
+        return (byte)(num & LO_BYTE);
+    }
+
+    public static int HiWord(int num){
+        return (int)((num & HI_WORD) >>> 16);
+    }
+
+    public static int LoWord(int num){
+        return (int)(num & LO_WORD);
+    }
+
     public static int makeInt(byte[] b, int start){
         int i = 0;
         i |= ((int)b[start]) & _8;

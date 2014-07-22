@@ -118,7 +118,9 @@ public class Server {
             int i = 1;
             while (!stop){
                 Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
-                oh.change(new FileOutputStream(fileNamePrefix + (i++) + ".mp4"));
+                if(!stop)   //too avoid 0 file creation
+                    oh.change(new FileOutputStream(fileNamePrefix + (i++) + ".mp4"));
+                else break;
             }
             try {
                 rtsp.stop();

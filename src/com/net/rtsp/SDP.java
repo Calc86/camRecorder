@@ -1,5 +1,9 @@
 package com.net.rtsp;
 
+import com.sun.org.apache.xml.internal.security.exceptions.Base64DecodingException;
+import com.sun.org.apache.xml.internal.security.utils.Base64;
+import org.omg.PortableServer.SERVANT_RETENTION_POLICY_ID;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
@@ -25,6 +29,14 @@ import java.util.Map;
 
  http://ru.wikipedia.org/wiki/Session_Description_Protocol
  http://tools.ietf.org/html/rfc4566.html
+
+ sprop-parameter-sets
+ The sprop-parameter-sets is an optional parameter that encodes H.264 sequence parameter set (SPS) and picture parameter set (PPS) Network Adaptation Layer NAL) units. These parameter sets provide essential information necessary to decode an H.264 bitstream; encoding them in SDP ensures that they are delivered reliably.
+ Not Used -  When the sprop-parameter-sets optional parameter is received in the incoming offer, it is discarded. The sprop-parameter-sets parameter is not displayed in the outgoing offer.
+ Include Out-of-band DCI - When the sprop-parameter-sets optional parameter is received it must contain only parameter sets that conform to the Profile Level set above.
+ a=fmtp:96 packetization-mode=1;profile-level-id=640028;sprop-parameter-sets=Z2QAKK2EBUViuKxUdCAqKxXFYqOhAVFYrisVHQgKisVxWKjoQFRWK4rFR0ICorFcVio6ECSFITk8nyfk/k/J8nm5s00IEkKQnJ5Pk/J/J+T5PNzZprQCgDLYCqQAAAMABAAAAwJZgQAAW42AABm/yve+F4RCNQ==,aO48sA==;
+ a=fmtp:96 packetization-mode=1;profile-level-id=640028;sprop-parameter-sets=Z2QAKK2EBUViuKxUdCAqKxXFYqOhAVFYrisVHQgKisVxWKjoQFRWK4rFR0ICorFcVio6ECSFITk8nyfk/k/J8nm5s00IEkKQnJ5Pk/J/J+T5PNzZprQCgDLYCqQAAAMABAAAAwJZgQAAW42AABm/yve+F4RCNQ==,aO48sA==;
+
  */
 
 public class SDP {
@@ -56,6 +68,59 @@ public class SDP {
         this.packet = packet;
 
         parse();
+    }
+
+    public class FMTP{
+        String fmtp;
+
+        byte[] sps = null;
+        byte[] pps = null;
+
+        Map<String, String> params = new HashMap<String, String>();
+
+        public FMTP(String fmtp) {
+            this.fmtp = fmtp;
+
+            parse();
+        }
+
+        private void parse(){
+            //String[] tmp1 = fmtp.split(";");
+
+            for(String s : fmtp.split(";")){
+                String[] ts = s.split("=", 2);
+                if(ts.length < 2){
+                    System.err.println("wrong fmtp param: " + s);
+                    continue;
+                }
+                params.put(ts[0], ts[1]);
+            }
+
+            String sprop;
+            if( (sprop = params.get("sprop-parameter-sets")) != null){
+                //we have sprop-parameter-sets
+                String[] props = sprop.split(",");
+                if(props.length != 2){
+                    System.err.println("wrong sprop-parameter-sets: " + sprop);
+                }
+                else{
+                    try {
+                        sps = Base64.decode(props[0].getBytes());
+                        pps = Base64.decode(props[1].getBytes());
+                    } catch (Base64DecodingException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
+        public byte[] getSps() {
+            return sps;
+        }
+
+        public byte[] getPps() {
+            return pps;
+        }
     }
 
     public int getV() {

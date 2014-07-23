@@ -19,6 +19,8 @@ public class H264RTP extends RTP {
     //http://ip.hhi.de/imagecom_G1/assets/pdfs/h264_iso-iec_14496-10.pdf
     public static final byte[] NON_IDR_PICTURE = {0x00, 0x00, 0x00, 0x01};
 
+    private boolean debug = true;
+
     /*public H264RTP(InputStream in, byte[] buffer, int length) throws IOException {
         super(in, buffer, length);
 
@@ -29,6 +31,8 @@ public class H264RTP extends RTP {
         super(rtp);
 
         setValues();
+
+        //if(debug) print();
     }
 
     private void setValues(){
@@ -81,17 +85,21 @@ public class H264RTP extends RTP {
                 FUHeader fu = getFUHeader();
 
                 if(fu.isFirst()){
+                    //if(debug) System.out.println("first");
                     out.write(H264RTP.NON_IDR_PICTURE);
                     out.write(getReconstructedNal());
                     out.write(getBuffer(), getH264PayloadStart(), getH264PayloadLength());
                 } else if(fu.isEnd()){
+                    //if(debug) System.out.println("end");
                     out.write(getBuffer(), getH264PayloadStart(), getH264PayloadLength());
                 } else{
+                    //if(debug) System.out.println("middle");
                     out.write(getBuffer(), getH264PayloadStart(), getH264PayloadLength());
                 }
                 break;
             case NAL.SPS: //Sequence parameter set
             case NAL.PPS: //Picture parameter set
+                //System.out.println("sps or pps write");
                 out.write(H264RTP.NON_IDR_PICTURE);
                 out.write(getBuffer(), getPayloadStart(), getPayloadLength());
                 break;

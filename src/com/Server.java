@@ -1,6 +1,7 @@
 package com;
 
 import com.model.Cam;
+import com.net.rtp.H264RTP;
 import com.net.rtsp.Reply;
 import com.net.rtsp.Rtsp;
 import com.net.rtsp.SDP;
@@ -43,6 +44,7 @@ public class Server {
     }
 
     public void start() throws NotImplementedException {
+        threads.clear();
         if(!isStop()) {
             System.err.println("server already started");
             return;
@@ -82,10 +84,19 @@ public class Server {
         }
     }
 
+    private SDP.FMTP getFmtp(SDP sdp){
+        SDP.FMTP fmtp = null;
+        if(sdp.getMediaByType(SDP.MediaType.video).get(0).getAttribute(SDP.AttributeName.fmtp) != null){
+            fmtp = sdp.new FMTP(sdp.getMediaByType(SDP.MediaType.video).get(0).getAttribute(SDP.AttributeName.fmtp).get(0));
+        }
+        return fmtp;
+    }
+
     private void rtsp(Cam cam){
         final Rtsp rtsp = new Rtsp();
 
         try {
+            rtsp.setDebug(true);
             rtsp.connect(cam.getUrl());
 
             rtsp.options();
@@ -93,15 +104,29 @@ public class Server {
 
             //добавить проверки
             String video = sdp.getMediaByType(SDP.MediaType.video).get(0).getAttribute(SDP.AttributeName.control).get(0);
-            System.out.println(video);
+            System.out.println("video:" + video);
             String audio = sdp.getMediaByType(SDP.MediaType.audio).get(0).getAttribute(SDP.AttributeName.control).get(0);
-            System.out.println(audio);
+            System.out.println("video:" + audio);
 
-            rtsp.setup(video, 0, 1, true, "");
+            SDP.FMTP fmtp = getFmtp(sdp);
+
+            int[] ports = {49501, 49502, 49503, 49504};
+            rtsp.setMap(ports);
+            boolean interleaved = false;
+
+            //rtsp.setup(video, 0, 1, true, "");
+            rtsp.setup(video, 0, 1, interleaved, "");
             Reply reply = rtsp.getLastReply();
             String session = reply.getSession();
-            System.out.println(session);
-            rtsp.setup(audio, 2, 3, true, session);
+            if(reply.getCode() == 403){
+                System.err.println("Non interleaved mode not supported");
+                interleaved = true;
+                rtsp.setup(video, 0, 1, interleaved, session);
+            }
+
+            System.out.println("session: " + session);
+            //rtsp.setup(audio, 2, 3, true, session);
+            rtsp.setup(audio, 2, 3, interleaved, session);
 
             String fileNamePrefix = cam.getId() + "_";
 
@@ -112,15 +137,31 @@ public class Server {
 
             //save only video
             outs[0] = oh;
+            if(fmtp != null){
+                out.write(H264RTP.NON_IDR_PICTURE);
+                out.write(fmtp.getSps());
+                out.write(H264RTP.NON_IDR_PICTURE);
+                out.write(fmtp.getPps());
+            }
 
             rtsp.play(session, outs);
 
             int i = 1;
             while (!stop){
                 Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
-                if(!stop)   //too avoid 0 file creation
-                    oh.change(new FileOutputStream(fileNamePrefix + (i++) + ".mp4"));
+                FileOutputStream newOut = new FileOutputStream(fileNamePrefix + (i++) + ".mp4");
+                if(!stop){
+                    if(fmtp != null){
+                        newOut.write(H264RTP.NON_IDR_PICTURE);
+                        newOut.write(fmtp.getSps());
+                        newOut.write(H264RTP.NON_IDR_PICTURE);
+                        newOut.write(fmtp.getPps());
+                    }
+                    oh.change(newOut);
+                }
                 else break;
+                /*if(!stop)   //too avoid 0 file creation
+                    oh.change(new FileOutputStream(fileNamePrefix + (i++) + ".mp4"));*/
             }
             try {
                 rtsp.stop();

@@ -23,6 +23,7 @@ public class Rtsp {
     public static final int CR = 13;
     public static final int LF = 10;
     public static final String CRLF = "\r\n";
+    public static final int SOCKET_READ_TIMEOUT = 3000;
 
     private URI uri;
     private final static String PROTOCOL = "RTSP/1.0";
@@ -53,6 +54,7 @@ public class Rtsp {
         if(port == -1) port = DEFAULT_RTSP_PORT;
 
         Socket socket = new Socket(host, port);
+        socket.setSoTimeout(SOCKET_READ_TIMEOUT);
 
         in = socket.getInputStream();
         out = socket.getOutputStream();
@@ -451,6 +453,22 @@ public class Rtsp {
                     break;
                 }
 
+                //RTCP?
+                if(rtp.getPayloadType() == RTP.TYPE_RTCP){
+                    RTCP rtcp = (RTCP)rtp;
+                    rtcp.justCopy();
+                    //System.out.println("Receive interleaved ");
+                    //System.out.println("ch " + frame.getChannel() + " l " + frame.getLength());
+                    frame.setLength(52);
+                    //System.out.println("l " + frame.getLength());
+                    //System.out.println("l " + rtcp.getLength());
+                    //rtcp.print();
+                    out.write(frame.buffer);
+                    out.write(rtcp.getBuffer(), 0, frame.getLength());
+                    //DatagramPacket reply = new DatagramPacket(rtcp.getBuffer(), 52, packet.getAddress(), packet.getPort());
+                    //ss[channel].send(reply);
+                }
+
                 if(os.length <= channel){
                     System.err.println("Нужно больше out стримов: " + channel);
                     continue;
@@ -502,6 +520,11 @@ public class Rtsp {
 
         public int getLength(){
             return BIT.makeShort(buffer, 2);
+        }
+
+        public void setLength(int length){
+            buffer[2] = BIT.HiByte(BIT.LoWord(length));
+            buffer[3] = BIT.LoByte(BIT.LoWord(length));
         }
     }
 

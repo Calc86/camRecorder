@@ -1,9 +1,13 @@
 package com.net.rtsp;
 
+import com.net.rtp.H264RTP;
 import com.net.rtp.RTCP;
 import com.net.rtp.RTP;
 import com.net.utils.BIT;
+import com.sun.org.apache.xml.internal.security.exceptions.Base64DecodingException;
+import com.sun.org.apache.xml.internal.security.utils.Base64;
 import org.apache.commons.lang3.NotImplementedException;
+import sun.text.resources.FormatData_ja;
 
 import java.io.*;
 import java.net.*;
@@ -23,6 +27,7 @@ public class Rtsp {
     private URI uri;
     private final static String PROTOCOL = "RTSP/1.0";
     private final static String USER_AGENT = "LibVLC/2.1.4 (LIVE555 Streaming Media v2014.01.21)";
+    private final static String C_SEQ = "CSeq: ";
 
     private InputStream in;
     private OutputStream out;
@@ -60,7 +65,7 @@ public class Rtsp {
     public void options() throws IOException {
         String packet =
                 "OPTIONS " + uri + " " + PROTOCOL + CRLF +
-                "cSeq: " + sequence + CRLF +
+                C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                         CRLF;
         send(packet);
@@ -68,7 +73,7 @@ public class Rtsp {
 
     public SDP describe() throws IOException {
         String packet = "DESCRIBE " + uri + " " + PROTOCOL + CRLF +
-                "cSeq: " + sequence + CRLF +
+                C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                 "Accept: application/sdp" + CRLF +
                 CRLF;
@@ -117,8 +122,12 @@ public class Rtsp {
         String request;
         if(path.substring(0, 5).equals("rtsp:"))
             request = path;
-        else
-            request = uri + path;
+        else{
+            if(!uri.toString().substring(uri.toString().length() - 2).equals("/") && !path.substring(0, 1).equals("/"))
+                request = uri + "/" + path;
+            else
+                request = uri + path;
+        }
 
         if(!session.equals("")) session = Reply.SESSION + " " + session + CRLF;
 
@@ -128,11 +137,11 @@ public class Rtsp {
             transport = "RTP/AVP/TCP;unicast;interleaved=" + map1 + "-" + map2;
         }
         else{
-            transport = "RTP/AVP;unicast;client_port=" + map1 + "-" + map2;
+            transport = "RTP/AVP;unicast;client_port=" + map[map1] + "-" + map[map2];
         }
 
         String packet = "SETUP " + request + " " + PROTOCOL + CRLF +
-                "cSeq: " + sequence + CRLF +
+                C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                 "Transport: " + transport + CRLF +
                 session +
@@ -144,7 +153,7 @@ public class Rtsp {
         sequence++;
 
         String packet = "PLAY " + uri + " " + PROTOCOL + CRLF +
-                "cSeq: " + sequence + CRLF +
+                C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                 "Session: " + session + CRLF +
                 "Range: npt=0.000-" + CRLF +
@@ -152,10 +161,13 @@ public class Rtsp {
         send(packet);
 
         if(isInterleaved){
+            //System.out.println("interleaved");
             process = new InterleavedProcess(os);
         }
-        else
+        else{
+            //System.out.println("nonInterleaved");
             process = new NonInterleavedProcess(os);
+        }
 
         process.processAll();
     }
@@ -164,7 +176,7 @@ public class Rtsp {
         sequence++;
 
         String packet = "GET_PARAMETER " + uri + " " + PROTOCOL + CRLF +
-                "cSeq: " + sequence + CRLF +
+                C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                 "Session: " + session + CRLF +
                 CRLF;
@@ -248,9 +260,9 @@ public class Rtsp {
             out.close();
         }
 
-        public void setOut(OutputStream out) {
+        /*public void setOut(OutputStream out) {
             this.out = out;
-        }
+        }*/
 
         public synchronized void change(final OutputStream out) throws IOException {
             this.out.flush();
@@ -480,7 +492,7 @@ public class Rtsp {
 
         private void readAndWaitMagicDollar() throws IOException {
             while( (buffer[0] = (byte)in.read()) != 0x24){
-                System.err.println("$ error");
+                System.err.println("$ error: " + buffer[0]);
             }
         }
 
@@ -537,7 +549,8 @@ public class Rtsp {
             //rtsp.setDebug(true);
             //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_0"));
             // cvlc -vvv --rtsp-tcp rtsp://10.113.151.152:554/tcp_live/profile_token_0 :sout=#rtp{sdp=rtsp://:8554/} :sout-keep
-            rtsp.connect(new URI("rtsp://10.154.28.203:8554/"));
+            //rtsp.connect(new URI("rtsp://10.154.28.203:8554/"));
+            rtsp.connect(new URI("rtsp://10.112.28.231:554/live1.sdp"));
 
             rtsp.options();
             SDP sdp = rtsp.describe();
@@ -592,8 +605,11 @@ public class Rtsp {
         final Rtsp rtsp = new Rtsp();
 
         try {
+            rtsp.setDebug(true);
+            //rtsp.connect(new URI("rtsp://10.112.28.231:554/live1.sdp"));
+            rtsp.connect(new URI("rtsp://10.112.28.231:554/live3.sdp"));
             //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_0"));
-            rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_1"));
+            //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_1"));
             //rtsp.connect(new URI("rtsp://10.154.28.203:8554/"));
 
             rtsp.options();
@@ -602,6 +618,12 @@ public class Rtsp {
 
             String video = sdp.getMediaByType(SDP.MediaType.video).get(0).getAttribute(SDP.AttributeName.control).get(0);
             System.out.println(video);
+
+            SDP.FMTP fmtp = null;
+            if(sdp.getMediaByType(SDP.MediaType.video).get(0).getAttribute(SDP.AttributeName.fmtp) != null){
+                fmtp = sdp.new FMTP(sdp.getMediaByType(SDP.MediaType.video).get(0).getAttribute(SDP.AttributeName.fmtp).get(0));
+            }
+
             String audio = sdp.getMediaByType(SDP.MediaType.audio).get(0).getAttribute(SDP.AttributeName.control).get(0);
             System.out.println(audio);
 
@@ -611,18 +633,31 @@ public class Rtsp {
             System.out.println(session);
             rtsp.setup(audio, 2, 3, true, session);
 
-            final FileOutputStream out = new FileOutputStream("0.tcp");
+            FileOutputStream out = new FileOutputStream("0.tcp");
 
             OutputStream[] outs = new OutputStream[4];
             OutputStreamHolder oh = rtsp.new OutputStreamHolder(out);
 
             outs[0] = oh;
+            if(fmtp != null){
+                out.write(H264RTP.NON_IDR_PICTURE);
+                out.write(fmtp.getSps());
+                out.write(H264RTP.NON_IDR_PICTURE);
+                out.write(fmtp.getPps());
+            }
 
             rtsp.play(session, outs);
 
             for (int i = 1; i < 6; i++) {
                 Thread.sleep(5000);
-                oh.change(new FileOutputStream(i + ".tcp"));
+                FileOutputStream newOut = new FileOutputStream(i + ".tcp");
+                if(fmtp != null){
+                    out.write(H264RTP.NON_IDR_PICTURE);
+                    out.write(fmtp.getSps());
+                    out.write(H264RTP.NON_IDR_PICTURE);
+                    out.write(fmtp.getPps());
+                }
+                oh.change(newOut);
             }
 
             System.out.println("try to stop...");
@@ -639,7 +674,7 @@ public class Rtsp {
     }
 
     public static void main(String[] args) {
-        //interleaved();
-        nonInterleaved();
+        interleaved();
+        //nonInterleaved();
     }
 }

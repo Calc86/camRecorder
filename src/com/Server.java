@@ -112,7 +112,7 @@ public class Server {
 
             int[] ports = {49501, 49502, 49503, 49504};
             rtsp.setMap(ports);
-            boolean interleaved = false;
+            boolean interleaved = true;
 
             //rtsp.setup(video, 0, 1, true, "");
             rtsp.setup(video, 0, 1, interleaved, "");
@@ -120,7 +120,7 @@ public class Server {
             String session = reply.getSession();
             if(reply.getCode() == 403){
                 System.err.println("Non interleaved mode not supported");
-                interleaved = true;
+                interleaved = !interleaved;
                 rtsp.setup(video, 0, 1, interleaved, session);
             }
 
@@ -159,9 +159,10 @@ public class Server {
                     }
                     oh.change(newOut);
                 }
-                else break;
-                /*if(!stop)   //too avoid 0 file creation
-                    oh.change(new FileOutputStream(fileNamePrefix + (i++) + ".mp4"));*/
+                else{
+                    newOut.close();
+                    break;
+                }
             }
             try {
                 rtsp.stop();

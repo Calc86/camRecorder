@@ -4,6 +4,7 @@ import com.net.rtp.H264RTP;
 import com.net.rtp.RTCP;
 import com.net.rtp.RTP;
 import com.net.utils.BIT;
+import com.net.utils.OutputStreamHolder;
 import com.sun.org.apache.xml.internal.security.exceptions.Base64DecodingException;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
 import org.apache.commons.lang3.NotImplementedException;
@@ -228,49 +229,6 @@ public class Rtsp {
         out.write(packet.getBytes());
 
         readReply();
-    }
-
-    public class OutputStreamHolder extends OutputStream {
-        volatile private OutputStream out;
-
-        public OutputStreamHolder(final OutputStream out) {
-            this.out = out;
-        }
-
-        @Override
-        public void write(int b) throws IOException {
-            out.write(b);
-        }
-
-        @Override
-        public void write(byte[] b) throws IOException {
-            out.write(b);
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            out.write(b, off, len);
-        }
-
-        @Override
-        public void flush() throws IOException {
-            out.flush();
-        }
-
-        @Override
-        public void close() throws IOException {
-            out.close();
-        }
-
-        /*public void setOut(OutputStream out) {
-            this.out = out;
-        }*/
-
-        public synchronized void change(final OutputStream out) throws IOException {
-            this.out.flush();
-            this.out.close();
-            this.out = out;
-        }
     }
 
     private abstract class Process{
@@ -597,7 +555,7 @@ public class Rtsp {
             FileOutputStream fOut = new FileOutputStream(f);
 
             OutputStream[] outs = new OutputStream[ports.length];
-            OutputStreamHolder oh = rtsp.new OutputStreamHolder(fOut);
+            OutputStreamHolder oh = new OutputStreamHolder(fOut);
 
             //outs[0] = fOut;
             outs[0] = oh;
@@ -659,7 +617,7 @@ public class Rtsp {
             FileOutputStream out = new FileOutputStream("0.tcp");
 
             OutputStream[] outs = new OutputStream[4];
-            OutputStreamHolder oh = rtsp.new OutputStreamHolder(out);
+            OutputStreamHolder oh = new OutputStreamHolder(out);
 
             outs[0] = oh;
             if(fmtp != null){

@@ -5,13 +5,18 @@ import com.net.rtp.H264RTP;
 import com.net.rtsp.Reply;
 import com.net.rtsp.Rtsp;
 import com.net.rtsp.SDP;
+import com.net.utils.OutputStreamHolder;
+import com.video.Recorder;
 import org.apache.commons.lang3.NotImplementedException;
 
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +42,10 @@ public class Server {
             String proto = cam.getUrl().getScheme();
             if(proto.equals("rtsp")){
                 rtsp(cam);
-            } else{
+            } else if(proto.equals("http")){
+                http(cam);
+            }
+            else{
                 throw new NotImplementedException("protocol " + proto + " not implemented");
             }
         }
@@ -92,6 +100,42 @@ public class Server {
         return fmtp;
     }
 
+    private void http(Cam cam){
+        try {
+            String fileNamePrefix = cam.getId() + "_";
+
+            FileOutputStream fOut = new FileOutputStream(fileNamePrefix + "0.mp4");
+            OutputStreamHolder oh = new OutputStreamHolder(fOut);
+            URL url = new URL(cam.getUrl().toString());
+            final Recorder recorder = new Recorder(url, oh);
+
+            recorder.play();
+
+            int i = 1;
+            while (!stop){
+                Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
+                if(!stop){
+                    FileOutputStream newOut = new FileOutputStream(fileNamePrefix + (i++) + ".mp4");
+                    oh.change(newOut);
+                }
+                else
+                    break;
+            }
+
+            recorder.stop();
+            oh.close();
+
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
     private void rtsp(Cam cam){
         final Rtsp rtsp = new Rtsp();
 
@@ -133,7 +177,7 @@ public class Server {
             final FileOutputStream out = new FileOutputStream(fileNamePrefix + "0.mp4");
 
             OutputStream[] outs = new OutputStream[4];
-            Rtsp.OutputStreamHolder oh = rtsp.new OutputStreamHolder(out);
+            OutputStreamHolder oh = new OutputStreamHolder(out);
 
             //save only video
             outs[0] = oh;

@@ -9,35 +9,60 @@ import java.net.URLConnection;
  *
  */
 public class Recorder {
-
+    final protected OutputStream out;
+    private URL url;
     private boolean stop = true;
 
-    public void open(URL url) throws IOException {
-        System.out.println("start");
+    public Recorder(URL url, OutputStream out) {
+        this.url = url;
+        this.out = out;
+    }
+
+    public void play() throws IOException {
         stop = false;
-
         URLConnection connection = url.openConnection();
+        final InputStream in = connection.getInputStream();
+        connection.setConnectTimeout(3000);
 
-        InputStream in = connection.getInputStream();
-        //InputStreamReader reader = new InputStreamReader(connection.getInputStream());
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                byte buffer[] = new byte[1024];
 
-        File f = new File("rec.avi");
-        FileOutputStream out = new FileOutputStream(f);
+                int readed = 0;
 
-        byte buffer[] = new byte[1024];
+                try {
+                    while( (readed = in.read(buffer)) != -1 && !stop){
+                        synchronized (out){
+                            out.write(buffer, 0, readed);    //записать в out stream
+                        }
+                    }
+                    in.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        t.start();
+
+        /*byte buffer[] = new byte[1024];
 
         int readed = 0;
         while( (readed = in.read(buffer)) != -1 && !stop){
-            out.write(buffer, 0, readed);
-            System.out.println("Readed: " + readed);
+            synchronized (out){
+                out.write(buffer, 0, readed);    //записать в out stream
+            }
         }
 
-        out.close();
-        in.close();
+        in.close();*/
     }
 
-    public void close(){
-        System.out.println("stop");
+    public boolean isStop() {
+        return stop;
+    }
+
+    public void stop(){
         stop = true;
     }
 }

@@ -1,4 +1,4 @@
-package com.video;
+package com.server;
 
 import java.io.*;
 import java.net.URL;
@@ -8,12 +8,12 @@ import java.net.URLConnection;
  * Created by calc on 14.07.14.
  *
  */
-public class Recorder {
+public class HTTPReceiver {
     final protected OutputStream out;
     private URL url;
     private boolean stop = true;
 
-    public Recorder(URL url, OutputStream out) {
+    public HTTPReceiver(URL url, OutputStream out) {
         this.url = url;
         this.out = out;
     }

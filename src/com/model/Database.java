@@ -27,13 +27,28 @@ public class Database {
             Class.forName("org.sqlite.JDBC");
             c = DriverManager.getConnection("jdbc:sqlite:test.db");
 
-            Statement statement = c.createStatement();
-            String sql = "CREATE TABLE IF NOT EXISTS CAMS " +
+            String sql;
+            Statement statement;
+
+            statement = c.createStatement();
+            sql = "CREATE TABLE IF NOT EXISTS CAMS " +
                     "(ID INTEGER PRIMARY KEY       AUTOINCREMENT, " +
                     " URL            CHAR(250) NOT NULL) ";
 
             statement.executeUpdate(sql);
             statement.close();
+
+            sql = "CREATE TABLE IF NOT EXISTS ARCHIVE " +
+                    "(ID INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "CID INTEGER NOT NULL, " +
+                    "START INTEGER NOT NULL, "+
+                    "STOP INTEGER NOT NULL) ";
+
+            statement = c.createStatement();
+            statement.executeUpdate(sql);
+            statement.close();
+
+
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         } catch (SQLException e) {

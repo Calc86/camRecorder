@@ -15,13 +15,19 @@ import java.util.List;
 public class Cam extends Model {
     private URI url;
 
-    public Cam() {
-        super("CAMS");
+    @Override
+    protected String getTableName() {
+        return "CAMS";
+    }
+
+    @Override
+    protected Model create() {
+        return new Cam();
     }
 
     @Override
     protected String getInsertSql() {
-        return "INSERT INTO " + table + "(URL) " +
+        return "INSERT INTO " + getTableName() + "(URL) " +
                 "VALUES ('" + url.toString() + "');";
     }
 
@@ -38,7 +44,7 @@ public class Cam extends Model {
         return url;
     }
 
-    public List<Cam> selectAll() throws SQLException {
+   /* public List<Cam> selectAll() throws SQLException {
         String sql = "SELECT * FROM " + table + ";";
 
         Statement statement = Database.getConnection().createStatement();
@@ -52,18 +58,18 @@ public class Cam extends Model {
         }
 
         return list;
-    }
+    }*/
 
-    protected void fromResult(ResultSet rs) throws SQLException {
+    @Override
+    protected void childFromResult(ResultSet rs) throws SQLException {
         try {
-            id = rs.getInt("ID");
             url = new URI(rs.getString("URL"));
         } catch (URISyntaxException e) {
             e.printStackTrace();
         }
     }
 
-    public void findByPK(int id) throws SQLException {
+    /*public void findByPK(int id) throws SQLException {
         String sql = "SELECT * FROM " + table + " where ID = " + id + ";";
 
         Statement statement = Database.getConnection().createStatement();
@@ -71,37 +77,10 @@ public class Cam extends Model {
 
         rs.next();
         fromResult(rs);
-    }
+    }*/
 
     @Override
     public String toString() {
         return id + ":" + url;
-    }
-
-    public static void main(String[] args) throws URISyntaxException {
-        Cam cam = new Cam();
-
-        /*cam.setUrl(new URI("http://127.0.0.1:8080/asd.mp4"));
-
-        try {
-            cam.insert();
-            System.out.println("success");
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }*/
-
-        List<Cam> list = null;
-        try {
-            list = cam.selectAll();
-            System.out.println(list.size());
-
-            for(Cam c : list){
-                System.out.println(c.getUrl());
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-
     }
 }

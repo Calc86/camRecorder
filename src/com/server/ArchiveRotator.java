@@ -13,28 +13,17 @@ import java.util.Date;
  * Created by calc on 25.07.14.
  *
  */
-public class ArchiveRotator {
+public class ArchiveRotator extends OutputStreamHolder {
     public static final String DEFAULT_PATH = "./archive/";
     private String path = DEFAULT_PATH;
-    private OutputStreamHolder oh;
+    //private OutputStreamHolder oh;
     private Cam cam;
 
     public ArchiveRotator(Cam cam) {
-        this(cam, DEFAULT_PATH, null);
+        this(cam, DEFAULT_PATH);
     }
 
     public ArchiveRotator(Cam cam, String path) {
-        this(cam, DEFAULT_PATH, null);
-    }
-
-    public ArchiveRotator(Cam cam, OutputStreamHolder oh) {
-        this(cam, DEFAULT_PATH, oh);
-    }
-
-    public ArchiveRotator(Cam cam, String path, OutputStreamHolder oh) {
-        if(oh == null) oh = new OutputStreamHolder();
-
-        this.oh = oh;
         this.path = path;
         this.cam = cam;
 
@@ -49,19 +38,18 @@ public class ArchiveRotator {
     }
 
     public synchronized void rotate() throws SQLException, IOException {
+        rotate(null);
+    }
+
+    public synchronized void rotate(byte[] preWrite) throws SQLException, IOException {
         Archive archive = new Archive();
         archive.setCid(cam.getId());
         archive.setStart(new Date().getTime());
         archive.insert();
 
-        oh.change(createFile(archive));
-    }
+        FileOutputStream out = createFile(archive);
+        if(preWrite != null) out.write(preWrite);
 
-    public OutputStream getOutputStream(){
-        return oh;
-    }
-
-    public void close() throws IOException {
-        oh.close();
+        change(out);
     }
 }

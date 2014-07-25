@@ -1,21 +1,16 @@
-package com;
+package com.server;
 
 import com.model.Cam;
+import com.model.Model;
 import com.net.rtp.H264RTP;
 import com.net.rtsp.Reply;
 import com.net.rtsp.Rtsp;
 import com.net.rtsp.SDP;
 import com.net.utils.OutputStreamHolder;
-import com.video.Recorder;
 import org.apache.commons.lang3.NotImplementedException;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -61,7 +56,7 @@ public class Server {
         Cam cam = new Cam();
 
         try {
-            List<Cam> list = cam.selectAll();
+            List<Cam> list = Model.selectAll(cam);
 
             if(list.size() == 0) return;
 
@@ -102,28 +97,24 @@ public class Server {
 
     private void http(Cam cam){
         try {
-            String fileNamePrefix = cam.getId() + "_";
-
-            FileOutputStream fOut = new FileOutputStream(fileNamePrefix + "0.mp4");
-            OutputStreamHolder oh = new OutputStreamHolder(fOut);
+            ArchiveRotator rotator = new ArchiveRotator(cam);
+            rotator.rotate();
             URL url = new URL(cam.getUrl().toString());
-            final Recorder recorder = new Recorder(url, oh);
+            final HTTPReceiver HTTPReceiver = new HTTPReceiver(url, rotator);
 
-            recorder.play();
+            HTTPReceiver.play();
 
-            int i = 1;
             while (!stop){
                 Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
                 if(!stop){
-                    FileOutputStream newOut = new FileOutputStream(fileNamePrefix + (i++) + ".mp4");
-                    oh.change(newOut);
+                    rotator.rotate();
                 }
                 else
                     break;
             }
 
-            recorder.stop();
-            oh.close();
+            HTTPReceiver.stop();
+            rotator.close();
 
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -133,6 +124,10 @@ public class Server {
             e.printStackTrace();
         } catch (InterruptedException e) {
             e.printStackTrace();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            stop = true;
         }
     }
 
@@ -172,40 +167,29 @@ public class Server {
             //rtsp.setup(audio, 2, 3, true, session);
             rtsp.setup(audio, 2, 3, interleaved, session);
 
-            String fileNamePrefix = cam.getId() + "_";
-
-            final FileOutputStream out = new FileOutputStream(fileNamePrefix + "0.mp4");
+            ByteArrayOutputStream fmtpBuffer = new ByteArrayOutputStream();
+            if(fmtp != null){
+                fmtpBuffer.write(H264RTP.NON_IDR_PICTURE);
+                fmtpBuffer.write(fmtp.getSps());
+                fmtpBuffer.write(H264RTP.NON_IDR_PICTURE);
+                fmtpBuffer.write(fmtp.getPps());
+            }
 
             OutputStream[] outs = new OutputStream[4];
-            OutputStreamHolder oh = new OutputStreamHolder(out);
-
+            ArchiveRotator rotator = new ArchiveRotator(cam);
+            if(fmtp != null) rotator.rotate(fmtpBuffer.toByteArray());
+            else rotator.rotate();
             //save only video
-            outs[0] = oh;
-            if(fmtp != null){
-                out.write(H264RTP.NON_IDR_PICTURE);
-                out.write(fmtp.getSps());
-                out.write(H264RTP.NON_IDR_PICTURE);
-                out.write(fmtp.getPps());
-            }
+            outs[0] = rotator;
 
             rtsp.play(session, outs);
 
             int i = 1;
             while (!stop){
                 Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
-                FileOutputStream newOut = new FileOutputStream(fileNamePrefix + (i++) + ".mp4");
                 if(!stop){
-                    if(fmtp != null){
-                        newOut.write(H264RTP.NON_IDR_PICTURE);
-                        newOut.write(fmtp.getSps());
-                        newOut.write(H264RTP.NON_IDR_PICTURE);
-                        newOut.write(fmtp.getPps());
-                    }
-                    oh.change(newOut);
-                }
-                else{
-                    newOut.close();
-                    break;
+                    if(fmtp != null) rotator.rotate(fmtpBuffer.toByteArray());
+                    else rotator.rotate();
                 }
             }
             try {
@@ -213,12 +197,16 @@ public class Server {
             } catch (Exception e) {
                 e.printStackTrace();
             } finally {
-                oh.close();
+                rotator.close();
             }
         } catch (IOException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
             e.printStackTrace();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            stop = true;
         }
     }
 

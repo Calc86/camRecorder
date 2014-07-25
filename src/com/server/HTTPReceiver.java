@@ -45,17 +45,6 @@ public class HTTPReceiver {
         });
 
         t.start();
-
-        /*byte buffer[] = new byte[1024];
-
-        int readed = 0;
-        while( (readed = in.read(buffer)) != -1 && !stop){
-            synchronized (out){
-                out.write(buffer, 0, readed);    //записать в out stream
-            }
-        }
-
-        in.close();*/
     }
 
     public boolean isStop() {

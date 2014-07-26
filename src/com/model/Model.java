@@ -31,7 +31,7 @@ abstract public class Model {
         execute(getSaveSql());
     }
 
-    private long execute(String sql) throws SQLException {
+    private synchronized long execute(String sql) throws SQLException {
         long lID = 0;
         Statement statement = Database.getConnection().createStatement();
         statement.executeUpdate(sql);
@@ -43,7 +43,7 @@ abstract public class Model {
         return lID;
     }
 
-    public void delete() throws SQLException {
+    public synchronized void delete() throws SQLException {
         String sql = "DELETE FROM " + getTableName() + " where ID = " + id + ";";
         Statement statement = Database.getConnection().createStatement();
         statement.executeUpdate(sql);
@@ -53,7 +53,7 @@ abstract public class Model {
         return id;
     }
 
-    protected void fromResult(ResultSet rs) throws SQLException {
+    protected synchronized void fromResult(ResultSet rs) throws SQLException {
         id = rs.getInt("ID");
         childFromResult(rs);
     }
@@ -62,7 +62,7 @@ abstract public class Model {
 
     abstract protected String getTableName();
 
-    public static <T extends Model> T findByID(T model, int id) throws SQLException {
+    public synchronized static <T extends Model> T findByID(T model, int id) throws SQLException {
         String sql = "SELECT * FROM " + model.getTableName() + " where ID = " + id + ";";
 
         Statement statement = Database.getConnection().createStatement();
@@ -80,7 +80,7 @@ abstract public class Model {
         return select(model, "");
     }
 
-    public static <T extends Model> List<T> select(T model, String where) throws SQLException {
+    public synchronized static <T extends Model> List<T> select(T model, String where) throws SQLException {
         String sql = "SELECT * FROM " + model.getTableName();
         if(!where.equals("")) sql += " where " + where;
         sql += ";";
@@ -96,19 +96,5 @@ abstract public class Model {
         }
 
         return list;
-    }
-
-    public static void main(String[] args) {
-        Cam c = new Cam();
-
-        try {
-            c.setUrl(new URI("http://localhost/"));
-            c.insert();
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
     }
 }

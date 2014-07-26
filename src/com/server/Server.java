@@ -2,6 +2,7 @@ package com.server;
 
 import com.model.Cam;
 import com.model.Model;
+import com.model.Settings;
 import com.net.rtp.H264RTP;
 import com.net.rtsp.Reply;
 import com.net.rtsp.Rtsp;
@@ -15,13 +16,15 @@ import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Created by calc on 22.07.14.
  *
  */
 public class Server {
-    public static final int LENGTH_OF_RECORD_IN_SECONDS = 5;
+    private static Logger log = Logger.getLogger(Server.class.getName());
+
     List<Thread> threads = new ArrayList<Thread>();
     private boolean stop = true;
 
@@ -105,7 +108,14 @@ public class Server {
             HTTPReceiver.play();
 
             while (!stop){
-                Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
+                //Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
+                //Thread.sleep(Settings.getInstance().getSeconds() * 1000);
+                int wait = Settings.getInstance().getSeconds();
+                while(wait > 0 && !stop){
+                    Thread.sleep(1000);
+                    wait--;
+                }
+
                 if(!stop){
                     rotator.rotate();
                 }
@@ -135,7 +145,7 @@ public class Server {
         final Rtsp rtsp = new Rtsp();
 
         try {
-            rtsp.setDebug(true);
+            rtsp.setDebug(Settings.getInstance().isDebug());
             rtsp.connect(cam.getUrl());
 
             rtsp.options();
@@ -186,7 +196,14 @@ public class Server {
 
             int i = 1;
             while (!stop){
-                Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
+                //Thread.sleep(LENGTH_OF_RECORD_IN_SECONDS * 1000);
+                int wait = Settings.getInstance().getSeconds();
+                while(wait > 0 && !stop){
+                    Thread.sleep(1000);
+                    wait--;
+                }
+
+                //Thread.sleep(Settings.getInstance().getSeconds() * 1000);
                 if(!stop){
                     if(fmtp != null) rotator.rotate(fmtpBuffer.toByteArray());
                     else rotator.rotate();

@@ -237,7 +237,7 @@ public class RTCP extends RTP {
 
         //header
         buffer[i++] = (byte)0x81;   //1000 0001
-        buffer[i++] = (byte)RTCP.TYPE_SENDER_REPORT;
+        buffer[i++] = (byte)RTCP.TYPE_RECEIVER_REPORT;
         buffer[i++] = 0; buffer[i++] = 7;   // 32/8-1
 
         //my ssrc

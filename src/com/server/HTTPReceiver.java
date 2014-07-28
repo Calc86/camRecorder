@@ -23,6 +23,7 @@ public class HTTPReceiver {
         URLConnection connection = url.openConnection();
         final InputStream in = connection.getInputStream();
         connection.setConnectTimeout(3000);
+        connection.setReadTimeout(3000);
 
         Thread t = new Thread(new Runnable() {
             @Override

@@ -5,12 +5,62 @@ import com.net.utils.BIT;
 /**
  * Created by calc on 17.07.14.
  * http://tools.ietf.org/html/rfc3550#page-19
+ *
+ * From wireshark:
+ * RTCP senders report (200)
+ *  01234567 01234567 01234567 01234567
+ * +--------+--------+--------+--------+
+ * |V P RC  | type201| length (octets) |
+ * v-2bit
+ * p-1bit
+ *  01234567 01234567 01234567 01234567
+ * +--------+--------+--------+--------+
+ *   SSRC
+ *  NTP timestamp MSW
+ *  NTP timestamp LSW
+ *  RTP timestamp
+ *  senders packet count
+ *  senders octet count
+ *
+ *  RTCP source description (202)
+ * +--------+--------+--------+--------+
+ * |V P SC  | type202| length          |
+ * chunks:
+ * Chunk 1:
+ * +--------+--------+--------+--------+
+ *   Identifier (SSRC?)
+ * SDES:
+ * +--------+--------+
+ *  type     length    Text... End(0)
+ *
+ *
+ * +--------+--------+--------+--------+
+ * |V P RC  | type201| length (octets) |
+ *  ssrc
+ *  Sources:
+ *  +-Source1:
+ *    +-Identifier (4bytes)
+ *    +-SSRC content
+ *      + fraction lost 1byte
+ *      + Cumulative number of packets lost: -1 (3 bytes)
+ *    + extended highest sequence number received
+ *      + cycle 2b
+ *      + number 2b
+ *    + jitter 4b
+ *    + LSR (middle of NTP timestamp)
+ *    + Delay since last SR 4b
+ *
+ *
+ *
  */
 public class RTCP extends RTP {
     public static final int TYPE_SENDER_REPORT = 200;
     public static final int TYPE_RECEIVER_REPORT = 201;
     public static final int TYPE_SOURCE_DESCRIPTION = 202;
     public static final int TYPE_GOODBYE = 203;
+
+    private static byte[] ssrc = {'c', 'a', 'l', 'c'};
+    private static byte[] sdes = {'c', 'a', 'l', 'c', '1', '2', '3'};
 
     public static final int HEADER_LENGTH = 8;  //header + SSRC
 
@@ -40,11 +90,19 @@ public class RTCP extends RTP {
         getBuffer()[1] = (byte)(type & BIT._8);
     }
 
-    @Override
-    public int getLength(){
+    public int getRTCPLength(){
         //return BIT.makeShort(buffer, 2);
         //same bytes
-        return getSequence();
+        return fromOctetCount(getSequence());
+    }
+
+    /**
+     * return (octet+1) * 8
+     * @param octet
+     * @return
+     */
+    protected int fromOctetCount(int octet){
+        return (octet + 1) * 8;
     }
 
     public int getHiNTPTimestamp(){
@@ -94,7 +152,7 @@ public class RTCP extends RTP {
                 getP() ? 1 : 0,
                 getRC(),
                 getPT(),
-                getLength()
+                getRTCPLength()
         );
         System.out.printf("|%32x|\n", getSSRC());
         System.out.printf("|%32x|\n", getHiNTPTimestamp());
@@ -106,7 +164,24 @@ public class RTCP extends RTP {
 
     @Override
     public int getSSRC() {
-        return BIT.makeInt(getBuffer(), 4);
+        return BIT.makeInt(getBuffer(), getSSRCStart());
+    }
+
+    public int getSSRCStart(){
+        return 4;
+    }
+
+    public boolean isHaveNextRTCP(){
+        return getLength() > getRTCPLength();
+    }
+
+    public RTCP getNextRTCP(){
+        //return new RTCP();
+        byte[] rtcpBuffer = new byte[getLength() - getRTCPLength()];
+
+        System.arraycopy(getBuffer(), getRTCPLength(), rtcpBuffer, 0, rtcpBuffer.length);
+
+        return new RTCP(rtcpBuffer, rtcpBuffer.length);
     }
 
     public class ReportBlock{
@@ -153,5 +228,84 @@ public class RTCP extends RTP {
         for (int i = 48; i <=51 ; i++) {
             getBuffer()[i] = 0;
         }
+    }
+
+    public static byte[] response201(RTCP rtcp, int extendedHighestSequenceNumber){
+        byte[] buffer = new byte[32];
+
+        int i = 0;
+
+        //header
+        buffer[i++] = (byte)0x81;   //1000 0001
+        buffer[i++] = (byte)RTCP.TYPE_SENDER_REPORT;
+        buffer[i++] = 0; buffer[i++] = 7;   // 32/8-1
+
+        //my ssrc
+        System.arraycopy(ssrc, 0, buffer, i, ssrc.length);
+        i += ssrc.length;
+
+        //source 1
+        System.arraycopy(rtcp.getBuffer(), rtcp.getSSRCStart(), buffer, i, 4);
+        i += 4;
+
+        //fraction lost
+        buffer[i++] = (byte)0xfe;
+        //Cumulative number of packets lost: -1
+        buffer[i++] = (byte)0xff;
+        buffer[i++] = (byte)0xff;
+        buffer[i++] = (byte)0xff;
+
+        //Extended highest sequence number received:
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+
+        //Interarrival jitter:
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+
+        //Last SR timestamp: 3810671619 (0xe3223c03)
+        buffer[i++] = BIT.HiByte(BIT.LoWord(rtcp.getHiNTPTimestamp()));
+        buffer[i++] = BIT.LoByte(BIT.LoWord(rtcp.getHiNTPTimestamp()));
+        buffer[i++] = BIT.HiByte(BIT.HiWord(rtcp.getLowNTPTimestamp()));
+        buffer[i++] = BIT.LoByte(BIT.HiWord(rtcp.getLowNTPTimestamp()));
+
+        //Delay since last SR timestamp: 71531 (1091 milliseconds)
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+
+        return buffer;
+    }
+
+    public static byte[] response202(RTCP rtcp){
+        byte[] buffer = new byte[20];
+
+        int i = 0;
+
+        //header
+        buffer[i++] = (byte)0x81;   //1000 0001
+        buffer[i++] = (byte)RTCP.TYPE_SOURCE_DESCRIPTION;
+        buffer[i++] = 0; buffer[i++] = 4;   // 32/8-1
+
+        // chunk 1
+        System.arraycopy(ssrc, 0, buffer, i, ssrc.length);
+        i += ssrc.length;
+
+        //sdes
+        buffer[i++] = 0x01; //Text
+        buffer[i++] = (byte)sdes.length;
+
+        //text
+        System.arraycopy(sdes, 0, buffer, i, sdes.length);
+
+        buffer[i++] = 0;    //end(0)
+
+
+        return buffer;
     }
 }

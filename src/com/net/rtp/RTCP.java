@@ -18,7 +18,7 @@ import com.net.utils.BIT;
  *   SSRC
  *  NTP timestamp MSW
  *  NTP timestamp LSW
- *  RTP timestamp
+ *  RTPWrapper timestamp
  *  senders packet count
  *  senders octet count
  *
@@ -53,18 +53,18 @@ import com.net.utils.BIT;
  *
  *
  */
-public class RTCP extends RTP {
+public class RTCP extends RTPWrapper {
     public static final int TYPE_SENDER_REPORT = 200;
     public static final int TYPE_RECEIVER_REPORT = 201;
     public static final int TYPE_SOURCE_DESCRIPTION = 202;
     public static final int TYPE_GOODBYE = 203;
 
     private static byte[] ssrc = {'c', 'a', 'l', 'c'};
-    private static byte[] sdes = {'c', 'a', 'l', 'c', '1', '2', '3'};
+    private static byte[] sdes = {'c', 'a', 'l', 'c', '-', '2', '3'};
 
     public static final int HEADER_LENGTH = 8;  //header + SSRC
 
-    public RTCP(RTP rtp) {
+    public RTCP(RTPWrapper rtp) {
         super(rtp);
     }
 
@@ -102,7 +102,7 @@ public class RTCP extends RTP {
      * @return
      */
     protected int fromOctetCount(int octet){
-        return (octet + 1) * 8;
+        return (octet + 1) * 4;
     }
 
     public int getHiNTPTimestamp(){
@@ -119,7 +119,7 @@ public class RTCP extends RTP {
 
     /**
      * sender's packet count: 32 bits
-     The total number of RTP data packets transmitted by the sender
+     The total number of RTPWrapper data packets transmitted by the sender
      since starting transmission up until the time this SR packet was
      generated.  The count SHOULD be reset if the sender changes its
      SSRC identifier.
@@ -132,7 +132,7 @@ public class RTCP extends RTP {
     /**
      *  sender's octet count: 32 bits
      The total number of payload octets (i.e., not including header or
-     padding) transmitted in RTP data packets by the sender since
+     padding) transmitted in RTPWrapper data packets by the sender since
      starting transmission up until the time this SR packet was
      generated.  The count SHOULD be reset if the sender changes its
      SSRC identifier.  This field can be used to estimate the average
@@ -177,6 +177,9 @@ public class RTCP extends RTP {
 
     public RTCP getNextRTCP(){
         //return new RTCP();
+
+        if(!isHaveNextRTCP()) return null;
+
         byte[] rtcpBuffer = new byte[getLength() - getRTCPLength()];
 
         System.arraycopy(getBuffer(), getRTCPLength(), rtcpBuffer, 0, rtcpBuffer.length);
@@ -230,7 +233,8 @@ public class RTCP extends RTP {
         }
     }
 
-    public static byte[] response201(RTCP rtcp, int extendedHighestSequenceNumber){
+    //вынести source наружу
+    public static byte[] response201(RTCP rtcp, int loop, int seq, int channel, long last, int jitter){
         byte[] buffer = new byte[32];
 
         int i = 0;
@@ -238,34 +242,38 @@ public class RTCP extends RTP {
         //header
         buffer[i++] = (byte)0x81;   //1000 0001
         buffer[i++] = (byte)RTCP.TYPE_RECEIVER_REPORT;
-        buffer[i++] = 0; buffer[i++] = 7;   // 32/8-1
+        buffer[i++] = 0; buffer[i++] = 7;   // 32/4-1
 
         //my ssrc
         System.arraycopy(ssrc, 0, buffer, i, ssrc.length);
         i += ssrc.length;
+        buffer[i-1] = (byte)channel;
 
         //source 1
         System.arraycopy(rtcp.getBuffer(), rtcp.getSSRCStart(), buffer, i, 4);
         i += 4;
 
         //fraction lost
-        buffer[i++] = (byte)0xfe;
+        buffer[i++] = (byte)0x00;
         //Cumulative number of packets lost: -1
+        /*buffer[i++] = (byte)0xff;
         buffer[i++] = (byte)0xff;
-        buffer[i++] = (byte)0xff;
-        buffer[i++] = (byte)0xff;
+        buffer[i++] = (byte)0xff;*/
+        buffer[i++] = 0;
+        buffer[i++] = 0;
+        buffer[i++] = 0;
 
         //Extended highest sequence number received:
-        buffer[i++] = 0;
-        buffer[i++] = 0;
-        buffer[i++] = 0;
-        buffer[i++] = 0;
+        buffer[i++] = BIT.HiByte(BIT.LoWord(loop));
+        buffer[i++] = BIT.LoByte(BIT.LoWord(loop));
+        buffer[i++] = BIT.HiByte(BIT.LoWord(seq));
+        buffer[i++] = BIT.LoByte(BIT.LoWord(seq));
 
         //Interarrival jitter:
-        buffer[i++] = 0;
-        buffer[i++] = 0;
-        buffer[i++] = 0;
-        buffer[i++] = 0;
+        buffer[i++] = BIT.HiByte(BIT.HiWord(jitter));
+        buffer[i++] = BIT.LoByte(BIT.HiWord(jitter));
+        buffer[i++] = BIT.HiByte(BIT.LoWord(jitter));
+        buffer[i++] = BIT.LoByte(BIT.LoWord(jitter));
 
         //Last SR timestamp: 3810671619 (0xe3223c03)
         buffer[i++] = BIT.HiByte(BIT.LoWord(rtcp.getHiNTPTimestamp()));
@@ -274,15 +282,23 @@ public class RTCP extends RTP {
         buffer[i++] = BIT.LoByte(BIT.HiWord(rtcp.getLowNTPTimestamp()));
 
         //Delay since last SR timestamp: 71531 (1091 milliseconds)
+        //1/65536
+        long now = System.currentTimeMillis();
+        int range = (int)(((double)(now - last)/1000) * 65536);
+
+        buffer[i++] = BIT.HiByte(BIT.HiWord(range));
+        buffer[i++] = BIT.LoByte(BIT.HiWord(range));
+        buffer[i++] = BIT.HiByte(BIT.LoWord(range));
+        buffer[i++] = BIT.LoByte(BIT.LoWord(range));
+        /*buffer[i++] = 0;
         buffer[i++] = 0;
-        buffer[i++] = 0;
-        buffer[i++] = 0;
-        buffer[i++] = 0;
+        buffer[i++] = 0x06;
+        buffer[i++] = 0x68;*/
 
         return buffer;
     }
 
-    public static byte[] response202(RTCP rtcp){
+    public static byte[] response202(RTCP rtcp, int channel){
         byte[] buffer = new byte[20];
 
         int i = 0;
@@ -290,11 +306,12 @@ public class RTCP extends RTP {
         //header
         buffer[i++] = (byte)0x81;   //1000 0001
         buffer[i++] = (byte)RTCP.TYPE_SOURCE_DESCRIPTION;
-        buffer[i++] = 0; buffer[i++] = 4;   // 32/8-1
+        buffer[i++] = 0; buffer[i++] = 4;   // 32/4-1
 
         // chunk 1
         System.arraycopy(ssrc, 0, buffer, i, ssrc.length);
         i += ssrc.length;
+        buffer[i-1] = (byte)channel;
 
         //sdes
         buffer[i++] = 0x01; //Text
@@ -302,6 +319,7 @@ public class RTCP extends RTP {
 
         //text
         System.arraycopy(sdes, 0, buffer, i, sdes.length);
+        i += sdes.length;
 
         buffer[i++] = 0;    //end(0)
 

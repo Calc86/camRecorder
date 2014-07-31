@@ -1,6 +1,7 @@
 package com.gui;
 
-import com.Server;
+import com.model.Model;
+import com.server.Server;
 import com.model.Cam;
 
 import javax.swing.*;
@@ -10,16 +11,20 @@ import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.net.URI;
-import java.net.URL;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.logging.*;
 
 /**
  * Created by calc on 22.07.14.
  *
  */
 public class MainFrame {
+    private static Logger log = Logger.getLogger(Server.class.getName());
+
     private JFrame frame;
     private JTree tree;
     private DefaultMutableTreeNode root = new DefaultMutableTreeNode("Камеры");
@@ -68,14 +73,19 @@ public class MainFrame {
         buttonStop.setEnabled(false);
 
         tool.addSeparator();
+
         final JButton buttonArchive = createToolButton("ic_action_video", "View archive");
         tool.add(buttonArchive);
-        buttonArchive.setEnabled(false);
+        //buttonArchive.setEnabled(false);
+
+        final JButton buttonSettings = createToolButton("ic_action_settings", "Settings");
+        tool.add(buttonSettings);
+        buttonSettings.setEnabled(true);
 
         tool.addSeparator();
+
         final JButton buttonExit = createToolButton("ic_action_forward", "Exit");
         tool.add(buttonExit);
-
 
 
         buttonAdd.addActionListener(new ActionListener() {
@@ -131,6 +141,8 @@ public class MainFrame {
                     buttonRemove.setEnabled(false);
                     buttonStart.setEnabled(false);
                     buttonStop.setEnabled(true);
+                    buttonArchive.setEnabled(false);
+                    buttonSettings.setEnabled(false);
                     buttonExit.setEnabled(false);
                     tree.setEnabled(false);
 
@@ -149,11 +161,28 @@ public class MainFrame {
                     buttonRemove.setEnabled(true);
                     buttonStart.setEnabled(true);
                     buttonStop.setEnabled(false);
+                    buttonArchive.setEnabled(true);
+                    buttonSettings.setEnabled(true);
                     buttonExit.setEnabled(true);
                     tree.setEnabled(true);
 
                     frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
                 }
+            }
+        });
+
+        buttonArchive.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                ArchiveDialog dialog = new ArchiveDialog(frame);
+                //dialog.display();
+            }
+        });
+
+        buttonSettings.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                SettingsDialog dialog = new SettingsDialog(frame);
             }
         });
 
@@ -167,7 +196,7 @@ public class MainFrame {
 
     private JButton createToolButton(String image, String toolTip){
         String imgLocation = "res/images/" + image + ".png";
-        URL imageURL = JToolBar.class.getResource(imgLocation);
+        //URL imageURL = JToolBar.class.getResource(imgLocation);
 
         JButton button = new JButton();
         button.setToolTipText(toolTip);
@@ -181,7 +210,7 @@ public class MainFrame {
         Cam cam = new Cam();
 
         try {
-            List<Cam> list = cam.selectAll();
+            List<Cam> list = Model.selectAll(cam);
 
             for(Cam c: list){
                 root.add(new DefaultMutableTreeNode(c, false));
@@ -194,6 +223,20 @@ public class MainFrame {
     }
 
     public static void main(String[] args) {
+        //http://stackoverflow.com/questions/5817738/how-to-use-log-levels-in-java
+
+        //LogManager.getLogManager().readConfiguration(new FileInputStream("./log.cfg"));
+        Handler consoleHandler = new ConsoleHandler();
+        consoleHandler.setLevel(Level.FINER);
+        Logger.getAnonymousLogger().addHandler(consoleHandler);
+
+        log.finest("finest");
+        log.finer("finer");
+        log.fine("fine");
+        log.info("info");
+        log.warning("warning");
+        log.log(Level.SEVERE, "serve");
+
         try {
             // Set System L&F
             UIManager.setLookAndFeel(

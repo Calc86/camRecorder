@@ -125,14 +125,20 @@ public class Rtsp {
             return null;
         }
 
-        byte[] b = read(length);
-        if(log.isLoggable(Level.FINE)) log.fine(new String(b));
+        byte[] buffer = new byte[length];
+        int readed = in.read(buffer);
+        if(readed < length){
+            log.warning("can not read SDP, readed: " + readed + "/" + length);
+            return null;
+        }
+        //byte[] b = read(length);
+        //if(log.isLoggable(Level.FINE)) log.fine(new String(b));
 
-        return new SDP(new String(b));
+        return new SDP(new String(buffer));
     }
 
     public int setup(String path, boolean interleaved) throws IOException {
-        int map1 = (sources.size() + 1) * 2;
+        int map1 = (sources.size()) * 2;
         int map2 = map1 + 1;
 
         log.info(String.format("setup path %s, map %d-%d, interleaved %b, session %s",
@@ -158,11 +164,16 @@ public class Rtsp {
             transport = "RTP/AVP;unicast;client_port=" + map[map1] + "-" + map[map2];
         }
 
+        String sessionString = "";
+        if(!session.equals("")){
+            sessionString = "Session: " + session + CRLF;
+        }
+
         String packet = "SETUP " + request + " " + PROTOCOL + CRLF +
                 C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
                 "Transport: " + transport + CRLF +
-                session +
+                sessionString +
                 CRLF;
         send(packet);
 
@@ -222,7 +233,7 @@ public class Rtsp {
         send(packet, false);
     }
 
-    private byte[] read(int length) throws IOException {
+    /*private byte[] read(int length) throws IOException {
         byte[] buffer = new byte[length];
 
         for (int i = 0; i < length; i++) {
@@ -230,31 +241,40 @@ public class Rtsp {
         }
 
         return buffer;
+    }*/
+
+    private String readLine() throws IOException {
+        int ch = -1;
+        byte[] buffer = new byte[8192];
+        int readed = 0;
+        boolean end = false;
+        while(!end){
+            try {
+                ch = in.read();
+            } catch (IOException e) {
+                log.warning("readed: " + readed);
+                e.printStackTrace();
+            }
+            if(ch == -1) throw new IOException("End of stream");
+            if(ch == 10) end = true;
+            buffer[readed++] = (byte)ch;
+        }
+
+        String s = new String(buffer, 0, readed);
+        return s.trim();
     }
 
     private void readReply() throws IOException {
-        String reply;
+        String reply = "";
 
-        byte[] buffer = new byte[1024];
-        int readed = 0;
-
-        while(true){
-            buffer[readed++] = (byte)in.read();
-
-            if(readed >= 4){
-                if(
-                    buffer[readed-4] == CR &&
-                    buffer[readed-3] == LF &&
-                    buffer[readed-2] == CR &&
-                    buffer[readed-1] == LF
-                )
-                    break;
-                if(readed >= buffer.length)
-                    throw new IOException("readed too many bytes: " + buffer.length + " readed: " + readed);
-            }
+        boolean end = false;
+        while(!end){
+            String line = readLine();
+            reply += line + CRLF;
+            System.out.println(line);
+            if(line.equals("")) end = true;
         }
 
-        reply = new String(buffer, 0, readed);
         lastReply = new Reply(reply);
         if(log.isLoggable(Level.FINE)) log.fine(reply);
     }
@@ -265,7 +285,7 @@ public class Rtsp {
 
     private void send(String packet, boolean needReply) throws IOException {
         sequence++;
-        if(log.isLoggable(Level.FINE)) log.fine(packet);
+        log.info(packet);
         out.write(packet.getBytes());
 
         if(needReply) readReply();
@@ -468,16 +488,8 @@ public class Rtsp {
             return (ch / 2);
         }
 
-        public void process() throws IOException {
-            stop = false;
-
-            byte[] buffer = RTPWrapper.createBuffer();
-
-            //final int[] loop = new  int[4];
-            //for (int i = 0; i < loop.length; i++) loop[i] = 1;
-            //final int[] sequence = new int[4];
-
-            Thread t = new Thread(new Runnable() {
+        private Thread createRTCPThread(){
+            return new Thread(new Runnable() {
                 private void send(Source s){
                     if(s.lastRTCP == null) return;
 
@@ -525,17 +537,16 @@ public class Rtsp {
                     }
                 }
             });
-
-            //t.start();
-
-            Thread t2 = new Thread(new Runnable() {
+        }
+        private Thread createGetParameterThread(){
+            return new Thread(new Runnable() {
                 @Override
                 public void run() {
                     while(!stop){
                         try {
                             Thread.sleep(55000);
                         } catch (InterruptedException e) {
-                            e.printStackTrace();
+                            //e.printStackTrace();
                         }
                         try {
                             getParameter();
@@ -546,7 +557,16 @@ public class Rtsp {
 
                 }
             });
+        }
 
+        public void process() throws IOException {
+            stop = false;
+
+            byte[] buffer = RTPWrapper.createBuffer();
+
+            Thread t = createRTCPThread();
+            //t.start();
+            Thread t2 = createGetParameterThread();
             t2.start();
 
             //for test purposes
@@ -567,7 +587,9 @@ public class Rtsp {
                     try {
                         raw = rtp.getByPayload();
                     } catch (NotImplementedException e) {
-                        if(log.isLoggable(Level.FINE)) log.fine(e.getMessage());
+                        //if(log.isLoggable(Level.FINE)) log.fine(e.getMessage());
+                        System.out.println(frame);
+                        log.warning("rtp seq=" + rtp.getSequence() + ": " + e.getMessage());
                     }
                 } catch (SocketException e) {
                     log.warning(e.getMessage()); //socket closed?
@@ -593,7 +615,6 @@ public class Rtsp {
                     s.transit = transit;
                     if(d < 0) d = -d;
                     s.jitter += (1./16.) * ((double)d - s.jitter);
-
 
                     int oldSeq = s.sequence;
                     int newSeq = rtp.getSequence();
@@ -622,7 +643,7 @@ public class Rtsp {
                 t.join();
                 t2.join();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                //e.printStackTrace();
             }
         }
 
@@ -644,19 +665,32 @@ public class Rtsp {
      */
     private class RTSPInterleavedFrameWrapper {
         private byte[] buffer = new byte[4];
+        public int readed = 0;
 
         public void fill(InputStream in) throws IOException {
+            readed = 0;
             readAndWaitMagicDollar();
             //read another 3 bytes
             //buffer[1] = (byte)in.read();
             buffer[2] = (byte)in.read();
+            readed++;
             buffer[3] = (byte)in.read();
+            readed++;
+        }
+
+        @Override
+        public String toString() {
+            return "RTSP Interleaved Frame:"
+                    + "\nMagic: " + buffer[0]
+                    + "\nChannel: " + buffer[1]
+                    + "\nLength: " + BIT.makeShort(buffer, 2);
         }
 
         private void readAndWaitMagicDollar() throws IOException {
             int ch = 0;
             //while( (buffer[0] = (byte)in.read()) != 0x24){
             while( (ch = in.read()) != -1){
+                readed++;
                 buffer[0] = (byte)ch;
                 if(buffer[0] == 0x24) break;
                 /*log.warning(String.format("$ error: %d, %x, %c",
@@ -664,7 +698,8 @@ public class Rtsp {
             }
             if(ch == -1) throw new IOException("End of stream reached");
             buffer[1] = (byte)in.read();
-            if(buffer[1] < 0 || buffer[1] >3) readAndWaitMagicDollar();
+            readed++;
+            //if(buffer[1] < 0 || buffer[1] >3) readAndWaitMagicDollar();
         }
 
         public byte getChannel(){
@@ -779,8 +814,8 @@ public class Rtsp {
         final Rtsp rtsp = new Rtsp();
 
         try {
-            //rtsp.connect(new URI("rtsp://10.112.28.231:554/live1.sdp"));
-            rtsp.connect(new URI("rtsp://10.112.28.231:554/live3.sdp"));
+            rtsp.connect(new URI("rtsp://10.112.28.231:554/live1.sdp"));
+            //rtsp.connect(new URI("rtsp://10.112.28.231:554/live3.sdp"));
             //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_0"));
             //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_1"));
             //rtsp.connect(new URI("rtsp://10.154.28.203:8554/"));

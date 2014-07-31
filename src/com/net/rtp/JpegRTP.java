@@ -2,29 +2,34 @@ package com.net.rtp;
 
 import com.net.jpeg.JpegRfc2345;
 import com.net.utils.BIT;
+import com.server.Server;
 import org.apache.commons.lang3.NotImplementedException;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.logging.Logger;
 
 /**
  * Created by calc on 16.07.14.
  * http://tools.ietf.org/html/rfc2435
  *
  */
-public class JpegRTP extends RTP {
+public class JpegRTP implements IRaw {
+    private static Logger log = Logger.getLogger(Server.class.getName());
 
     public static final int JPEG_HEADER_SIZE = 8;
     public static final int JPEG_RESTART_MARKER_HEADER_SIZE = 4;
     public static final int JPEG_QUANTIZATION_TABLE_HEADER_SIZE = 4;
 
-    public JpegRTP(RTP rtp) {
-        super(rtp);
+    private RTPWrapper rtp;
+
+    public JpegRTP(RTPWrapper rtp) {
+        this.rtp = rtp;
     }
 
     public byte getTypeSpecific(){
         //3.1.  JPEG header
-        return getBuffer()[getPayloadStart()];
+        return rtp.getBuffer()[rtp.getPayloadStart()];
     }
 
     public int getFragmentOffset(){
@@ -34,22 +39,22 @@ public class JpegRTP extends RTP {
 
     public byte getType(){
         //3.1.  JPEG header
-        return getBuffer()[getPayloadStart() + 4];
+        return rtp.getBuffer()[rtp.getPayloadStart() + 4];
     }
 
     public byte getQuality(){
         //3.1.  JPEG header
-        return getBuffer()[getPayloadStart() + 5];
+        return rtp.getBuffer()[rtp.getPayloadStart() + 5];
     }
 
     public byte getWidth(){
         //3.1.  JPEG header
-        return getBuffer()[getPayloadStart() + 6];
+        return rtp.getBuffer()[rtp.getPayloadStart() + 6];
     }
 
     public byte getHeight(){
         //3.1.  JPEG header
-        return getBuffer()[getPayloadStart() + 7];
+        return rtp.getBuffer()[rtp.getPayloadStart() + 7];
     }
 
     /**
@@ -61,37 +66,39 @@ public class JpegRTP extends RTP {
         //костыль
         //return getBuffer()[getPayloadStart() + 8] == 0 && getBuffer()[getPayloadStart() + 9] == 0;
         //return getBuffer()[getPayloadStart() + getJpegQuantizationTableOffset()] == 0 && getQPrecision() == 0;
-        return getBuffer()[getPayloadStart() + getJpegQuantizationTableOffset()] == 0;
+        return rtp.getBuffer()[rtp.getPayloadStart() + getJpegQuantizationTableOffset()] == 0;
     }
 
     public byte getQPrecision(){
         //3.1.8.  Quantization Table header
-        return getBuffer()[getPayloadStart() + getJpegQuantizationTableOffset() + 1];
+        return rtp.getBuffer()[rtp.getPayloadStart() + getJpegQuantizationTableOffset() + 1];
     }
 
     public int getQLength(){
         //int l = BIT.makeShort(getBuffer(), getPayloadStart() + 10);
         //3.1.8.  Quantization Table header
-        int l = BIT.makeShort(getBuffer(), getPayloadStart() + getJpegQuantizationTableOffset() + 2);
+        int l = BIT.makeShort(rtp.getBuffer(), rtp.getPayloadStart() + getJpegQuantizationTableOffset() + 2);
         //if(l != 128)
         //    throw new NotImplementedException("jpeg quantization table length not equal 128: " + l);
 
         return l;
     }
 
-    public byte[] getLqtTable(){
-        byte[] tbl = new byte[64];
-        //System.arraycopy(getBuffer(), getPayloadStart() + JPEG_HEADER_SIZE + JPEG_QUANTIZATION_TABLE_HEADER_SIZE, tbl, 0, 64);
-        System.arraycopy(getBuffer(), getPayloadStart() + getJpegQuantizationTableOffset() + JPEG_QUANTIZATION_TABLE_HEADER_SIZE, tbl, 0, 64);
+    byte[] tbl1 = new byte[64];
+    byte[] tbl2 = new byte[64];
 
-        return tbl;
+    public byte[] getLqtTable(){
+        //System.arraycopy(getBuffer(), getPayloadStart() + JPEG_HEADER_SIZE + JPEG_QUANTIZATION_TABLE_HEADER_SIZE, tbl, 0, 64);
+        System.arraycopy(rtp.getBuffer(), rtp.getPayloadStart() + getJpegQuantizationTableOffset() + JPEG_QUANTIZATION_TABLE_HEADER_SIZE, tbl1, 0, 64);
+
+        return tbl1;
     }
 
     public byte[] getCqtTable(){
-        byte[] tbl = new byte[64];
-        System.arraycopy(getBuffer(), getPayloadStart() + getJpegQuantizationTableOffset() + JPEG_QUANTIZATION_TABLE_HEADER_SIZE + 64, tbl, 0, 64);
 
-        return tbl;
+        System.arraycopy(rtp.getBuffer(), rtp.getPayloadStart() + getJpegQuantizationTableOffset() + JPEG_QUANTIZATION_TABLE_HEADER_SIZE + 64, tbl2, 0, 64);
+
+        return tbl2;
     }
 
     public int getJpegQuantizationTableOffset(){
@@ -115,11 +122,11 @@ public class JpegRTP extends RTP {
 
     public int getJPEGPayloadStart() throws NotImplementedException {
         if(getType() < 64){
-            return getPayloadStart() + getJpegPayloadOffset();
+            return rtp.getPayloadStart() + getJpegPayloadOffset();
         }else
         if(getType() < 128){
             //we have 3.1.7.  Restart Marker header
-            return getPayloadStart() + getJpegPayloadOffset();
+            return rtp.getPayloadStart() + getJpegPayloadOffset();
         }
         else{
             throw new NotImplementedException("jpeg type: " + getType() + " not implemented");
@@ -128,11 +135,11 @@ public class JpegRTP extends RTP {
 
     public int getJPEGPayloadLength() throws NotImplementedException {
         if(getType() < 64){
-            return getPayloadLength() - getJpegPayloadOffset();
+            return rtp.getPayloadLength() - getJpegPayloadOffset();
         }
         else if(getType() < 128){
             //we have 3.1.7.  Restart Marker header
-            return getPayloadLength() - getJpegPayloadOffset();
+            return rtp.getPayloadLength() - getJpegPayloadOffset();
         }
         else{
             throw new NotImplementedException("jpeg type: " + getType() + " not implemented");
@@ -144,7 +151,7 @@ public class JpegRTP extends RTP {
     }
 
     protected boolean isEnd(){
-        return getMarker();
+        return rtp.getMarker();
     }
 
     public void writeRawJPEGtoStream(OutputStream out) throws IOException {
@@ -155,18 +162,18 @@ public class JpegRTP extends RTP {
             byte[] headers = new byte[1024];
             int length = makeJpeg(headers);
             out.write(headers, 0, length);
-            out.write(getBuffer(), getJPEGPayloadStart(), getJPEGPayloadLength());
+            out.write(rtp.getBuffer(), getJPEGPayloadStart(), getJPEGPayloadLength());
         }else
         //if(getMarker()){
         if(isEnd()){
             //end
             //System.out.println("end");
-            out.write(getBuffer(), getJPEGPayloadStart(), getJPEGPayloadLength());
+            out.write(rtp.getBuffer(), getJPEGPayloadStart(), getJPEGPayloadLength());
             //EOI
         } else {
           //middle
             //System.out.println("middle");
-            out.write(getBuffer(), getJPEGPayloadStart(), getJPEGPayloadLength());
+            out.write(rtp.getBuffer(), getJPEGPayloadStart(), getJPEGPayloadLength());
         }
     }
 

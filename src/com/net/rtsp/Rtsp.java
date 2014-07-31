@@ -19,9 +19,9 @@ import java.util.logging.Logger;
  * Created by calc on 14.07.14.
  *
  */
-public class RTSP {
+public class Rtsp {
     public static final int RTSP_OK = 200;
-    private static Logger log = Logger.getLogger(RTSP.class.getName());
+    private static Logger log = Logger.getLogger(Rtsp.class.getName());
 
     //constants
     public static final int PACKET_BUFFER_COUNT = 100;
@@ -719,7 +719,7 @@ public class RTSP {
     }
 
     public static void nonInterleaved(){
-        final RTSP rtsp = new RTSP();
+        final Rtsp rtsp = new Rtsp();
 
         try {
             //rtsp.setDebug(true);
@@ -776,7 +776,7 @@ public class RTSP {
     }
 
     public static void interleaved(){
-        final RTSP rtsp = new RTSP();
+        final Rtsp rtsp = new Rtsp();
 
         try {
             //rtsp.connect(new URI("rtsp://10.112.28.231:554/live1.sdp"));

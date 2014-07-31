@@ -14,6 +14,8 @@ public class BIT {
     public static final int _7 = 0x7f;
     public static final int _8 = 0xff;
     public static final int _16 = 0xffff;
+    public static final int _24 = 0xffffff;
+    public static final long _32 = 0xffffffffL;
 
     public static final int RFC_P0 = 0x80;
     public static final int RFC_P1 = 0x40;
@@ -66,10 +68,15 @@ public class BIT {
         return i & _16;
     }
 
+    public static int uShort(short i){
+        return i & BIT._16;
+    }
+
     public static void main(String[] args) {
         byte a = 0;
         a = (byte)0xff;
         System.out.println(a);
         System.out.printf("%x", a);
     }
+
 }

@@ -1,11 +1,11 @@
 package com.net.rtsp;
 
 import com.net.rtp.H264RTP;
+import com.net.rtp.IRaw;
 import com.net.rtp.RTCP;
-import com.net.rtp.RTP;
+import com.net.rtp.RTPWrapper;
 import com.net.utils.BIT;
 import com.net.utils.OutputStreamHolder;
-import com.net.utils.uInt;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
@@ -19,9 +19,11 @@ import java.util.logging.Logger;
  * Created by calc on 14.07.14.
  *
  */
-public class Rtsp {
-    private static Logger log = Logger.getLogger(Rtsp.class.getName());
+public class RTSP {
+    public static final int RTSP_OK = 200;
+    private static Logger log = Logger.getLogger(RTSP.class.getName());
 
+    //constants
     public static final int PACKET_BUFFER_COUNT = 100;
     public static final int DEFAULT_RTSP_PORT = 554;
     public static final int CR = 13;
@@ -29,25 +31,26 @@ public class Rtsp {
     public static final String CRLF = "\r\n";
     public static final int SOCKET_READ_TIMEOUT = 3000;
 
-    private URI uri;
     private final static String PROTOCOL = "RTSP/1.0";
     private final static String USER_AGENT = "LibVLC/2.1.4 (LIVE555 Streaming Media v2014.01.21)";
     private final static String C_SEQ = "CSeq: ";
 
+
+    private URI uri;
     private InputStream in;
     private OutputStream out;
 
     private int sequence = 1;
     private Reply lastReply;
 
-    private boolean debug = false;
     public boolean stop = false;
     private boolean isInterleaved = false;
     private Process process = null;
 
     private int[] map;
-    private String session;
-    private Socket socket;
+    private String session = "";
+    private List<Source> sources= new ArrayList<Source>();
+
 
     public void setMap(int[] map) {
         this.map = map;
@@ -60,16 +63,13 @@ public class Rtsp {
         int port = uri.getPort();
         if(port == -1) port = DEFAULT_RTSP_PORT;
 
-        socket = new Socket(host, port);
+        Socket socket = new Socket(host, port);
         socket.setSoTimeout(SOCKET_READ_TIMEOUT);
-        socket.setReceiveBufferSize(20*1024*1024);
+        socket.setReceiveBufferSize(30 * 1024 * 1024);
+        log.info("socket receive buffer size: " + socket.getReceiveBufferSize());
 
         in = socket.getInputStream();
         out = socket.getOutputStream();
-    }
-
-    public void setDebug(boolean on){
-        debug = on;
     }
 
     public void options() throws IOException {
@@ -93,7 +93,7 @@ public class Rtsp {
 
         String response = lastReply.getReply();
 
-        if(lastReply.getCode() != 200){
+        if(lastReply.getCode() != RTSP_OK){
             log.warning("describe return code: " + lastReply.getCode());
             return null;
         }
@@ -130,7 +130,10 @@ public class Rtsp {
         return new SDP(new String(b));
     }
 
-    public void setup(String path, int map1, int map2, boolean interleaved, String session) throws IOException {
+    public int setup(String path, boolean interleaved) throws IOException {
+        int map1 = (sources.size() + 1) * 2;
+        int map2 = map1 + 1;
+
         log.info(String.format("setup path %s, map %d-%d, interleaved %b, session %s",
                 path, map1, map2, interleaved, session));
         String request;
@@ -152,6 +155,8 @@ public class Rtsp {
             transport = "RTP/AVP/TCP;unicast;interleaved=" + map1 + "-" + map2;
         }
         else{
+            if(map.length <= map1 || map.length <= map2)
+                throw new IllegalStateException("Please set port map before using non interleaved mode");
             transport = "RTP/AVP;unicast;client_port=" + map[map1] + "-" + map[map2];
         }
 
@@ -162,9 +167,22 @@ public class Rtsp {
                 session +
                 CRLF;
         send(packet);
+
+        if(session.equals("")){
+            session = lastReply.getSession();
+            log.info("session: " + session);
+        }
+
+        if(lastReply.getCode() == RTSP_OK){
+            sources.add(new Source());
+        }else{
+            log.warning("RTSP Reply code: " + lastReply.getCode());
+        }
+
+        return lastReply.getCode();
     }
 
-    public void play(final String session, final OutputStream[] os) throws IOException {
+    public int play(final OutputStream[] os) throws IOException {
         sequence++;
 
         String packet = "PLAY " + uri + " " + PROTOCOL + CRLF +
@@ -175,17 +193,24 @@ public class Rtsp {
                 CRLF;
         send(packet);
 
-        if(isInterleaved){
-            process = new InterleavedProcess(os);
+        if(lastReply.getCode() == RTSP_OK){
+            if(isInterleaved){
+                process = new InterleavedProcess(os);
+            }
+            else{
+                process = new NonInterleavedProcess(os);
+            }
+
+            process.processAll();
         }
         else{
-            process = new NonInterleavedProcess(os);
+            log.warning("RTSP Reply code: " + lastReply.getCode());
         }
 
-        process.processAll();
+        return lastReply.getCode();
     }
 
-    public void getParameter(final String session) throws IOException {
+    public void getParameter() throws IOException {
         sequence++;
 
         String packet = "GET_PARAMETER " + uri + " " + PROTOCOL + CRLF +
@@ -282,7 +307,7 @@ public class Rtsp {
         }
 
         public void process(int channel) throws IOException {
-            byte[] buffer = RTP.createBuffer();
+            byte[] buffer = RTPWrapper.createBuffer();
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
             TreeMap<Integer, byte[]> sequencedPackets = new TreeMap<Integer, byte[]>();
             ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
@@ -296,16 +321,16 @@ public class Rtsp {
                     break;
                 }
 
-                //RTP rtp = new RTP(buffer, packet.getLength());
-                RTP rtp;
+                //RTPWrapper rtp = new RTPWrapper(buffer, packet.getLength());
+                RTPWrapper rtp;
                 try {
-                    rtp = (new RTP(buffer, packet.getLength())).getRtpByPayload();
+                    rtp = (new RTPWrapper(buffer, packet.getLength())).getRtpByPayload();
                 } catch (NotImplementedException e){
                     log.finest(e.getMessage());
                     continue;
                 }
 
-                if(rtp.getPayloadType() == RTP.TYPE_RTCP){
+                /*if(rtp.getPayloadType() == RTPWrapper.TYPE_RTCP){
                     RTCP rtcp = (RTCP)rtp;
 
                     if(rtcp.getPT() == RTCP.TYPE_SENDER_REPORT){
@@ -331,7 +356,7 @@ public class Rtsp {
                             ss[channel].send(reply);
                         }
                     }
-                }
+                }*/
 
                 if(os[channel] == null) continue;
 
@@ -395,6 +420,15 @@ public class Rtsp {
         }
     }
 
+    private class Source{
+        public int SSRC;
+        public RTCP lastRTCP;
+        public long lastRTCPTime;
+        public long jitter;
+        public long transit;
+    }
+
+
     private class InterleavedProcess extends Process{
         Thread t;
 
@@ -418,17 +452,17 @@ public class Rtsp {
             t.start();
         }
 
+        //source param
         private final Object sync = new Object();
         private RTCP[] rtcp = new RTCP[4];
         private long[] lastRtcp = new long[4];
-
         long[] s_jitter = new long[4];
         long[] s_transit = new long[4];
 
         public void process() throws IOException {
             stop = false;
 
-            byte[] buffer = RTP.createBuffer();
+            byte[] buffer = RTPWrapper.createBuffer();
 
             final int[] loop = new  int[4];
             //for (int i = 0; i < loop.length; i++) loop[i] = 1;
@@ -451,7 +485,7 @@ public class Rtsp {
                             else if(r.getPT() == RTCP.TYPE_SOURCE_DESCRIPTION){
                                 bo.write(RTCP.response202(r, ch*2+1));
                             } else {
-                                System.out.println("Херня какая то");
+                                System.out.println("RTCP Thread - Херня какая то: " + r.getPT());
                             }
                         }while ( (r = r.getNextRTCP()) != null);
                         out.write(bo.toByteArray());
@@ -485,117 +519,117 @@ public class Rtsp {
                 }
             });
 
-            t.start();
+            //t.start();
 
             Thread t2 = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    try {
-                        Thread.sleep(55000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    synchronized (sync){
+                    while(!stop){
                         try {
-                            getParameter(session);
-                        } catch (IOException e) {
+                            Thread.sleep(55000);
+                        } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
+                        synchronized (sync){
+                            try {
+                                getParameter();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
                     }
+
                 }
             });
 
             t2.start();
 
+            //for test purposes
+            boolean justRead = true;
+
+            //Wrappers
+            RTSPInterleavedFrameWrapper frame = new RTSPInterleavedFrameWrapper();
+            RTPWrapper rtp = new RTPWrapper(buffer, buffer.length);
+
             while(!stop){
-                RTSPInterleavedFrame frame;
+                IRaw raw = rtp;
+                //читаем фрейм
                 try {
-                    frame = new RTSPInterleavedFrame(in);
-                } catch (SocketException e) {
-                    //socket closed?
-                    log.warning(e.getMessage());
+                    frame.fill(in);
 
-                    break;
-                }
-                byte channel = frame.getChannel();
-
-                //по любому читаем rtp пакет
-                RTP rtp;
-                try {
-                    rtp = new RTP(in, buffer, frame.getLength());
+                    //полюбому читаем rtp пакет
+                    rtp.fill(in, frame.getLength());
                     try {
-                        rtp = rtp.getRtpByPayload();
+                        raw = rtp.getByPayload();
                     } catch (NotImplementedException e) {
-                        log.finest(e.getMessage());
+                        if(log.isLoggable(Level.FINE)) log.fine(e.getMessage());
                     }
                 } catch (SocketException e) {
-                    //socket closed?
-                    log.warning(e.getMessage());
+                    log.warning(e.getMessage()); //socket closed?
                     break;
                 }
-                //if(channel != 0) System.out.println(rtp.getPayloadType());
+
+                byte ch = frame.getChannel();
 
                 //RTCP?
-                if(rtp.getPayloadType() == RTP.TYPE_RTCP){
-                    //System.out.println("we have rtcp on ch " + channel);
-                    //ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                    //RTCP rtcp = (RTCP)rtp;
+                /*if(rtp.getPayloadType() == RTPWrapper.TYPE_RTCP){
                     synchronized (sync){
                         byte[] rb = new byte[frame.getLength()];
                         System.arraycopy(buffer, 0, rb, 0, rb.length);
-                        rtcp[channel] = new RTCP(rb, rb.length);    //save last rtsp
-                        lastRtcp[channel] = System.currentTimeMillis();
+                        rtcp[ch] = new RTCP(rb, rb.length);    //save last rtsp
+                        lastRtcp[ch] = System.currentTimeMillis();
                         System.out.println(frame.getLength());
                     }
-
-                    /*do {
-                        if(rtcp.getPT() == RTCP.TYPE_SENDER_REPORT){
-                            bo.write(RTCP.response201(rtcp, loop[channel-1], sequence[channel-1], channel));
-                        }
-                        else if(rtcp.getPT() == RTCP.TYPE_SOURCE_DESCRIPTION){
-                            bo.write(RTCP.response202(rtcp, channel));
-                        }
-                    }while ( (rtcp = rtcp.getNextRTCP()) != null);
-                    frame.setLength(bo.size());
-                    out.write(frame.buffer);
-                    out.write(bo.toByteArray());*/
                 } else {
-                    //if(channel != 0) System.out.println(channel);
+                    //вычисление для source параметров (для нужд RTCP)
                     long ts = uInt.get(rtp.getTimestamp());
                     long arrival = System.currentTimeMillis() / 1000L;
                     long transit = arrival - ts;
-                    long d = transit - s_transit[channel];
-                    s_transit[channel] = transit;
+                    long d = transit - s_transit[ch];
+                    s_transit[ch] = transit;
                     if(d < 0) d = -d;
                     synchronized (sync){
-                        s_jitter[channel] += (1./16.) * ((double)d - s_jitter[channel]);
+                        s_jitter[ch] += (1./16.) * ((double)d - s_jitter[ch]);
                         //System.out.println("ch: " + channel + " jitter: " + s_jitter[channel]);
                     }
 
 
-                    int oldSeq = sequence[channel];
+                    int oldSeq = sequence[ch];
                     int newSeq = rtp.getSequence();
-                    if(newSeq < oldSeq) loop[channel]++;
+                    if(newSeq < oldSeq) loop[ch]++;
                     sequence[frame.getChannel()] = newSeq;
                     //System.out.println(channel + ":" + loop[channel] + ":" + sequence[channel]);
-                }
+                }*/
 
-                if(os.length <= channel){
-                    log.warning("Нужно больше out стримов: " + channel);
+                if(os.length <= ch){
+                    log.warning("Нужно больше out стримов: " + ch);
                     continue;
                 }
 
-                if(os[channel] == null) continue;
+                //if(justRead) continue;
+                if(os[ch] == null) continue;
+                //if(justRead) continue;
 
-                synchronized (os[channel]){
-                    rtp.writeRawToStream(os[channel]);
+                synchronized (os[ch]){
+                    //rtp.writeRawToStream(os[channel]);
+                    raw.writeRawToStream(os[ch]);
                 }
+            }
+
+            t.interrupt();
+            t2.interrupt();
+            try {
+                t.join();
+                t2.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
 
         @Override
         public void stop() {
             try {
+                t.interrupt();
                 t.join();
             } catch (InterruptedException e) {
                 log.warning(ExceptionUtils.getStackTrace(e));
@@ -608,15 +642,10 @@ public class Rtsp {
      * Channel: 0x00    1 byte
      * Length: 0x0000   2 bytes
      */
-    private class RTSPInterleavedFrame{
-
+    private class RTSPInterleavedFrameWrapper {
         private byte[] buffer = new byte[4];
 
-        InputStream in;
-
-        RTSPInterleavedFrame(InputStream in) throws IOException {
-            this.in = in;
-
+        public void fill(InputStream in) throws IOException {
             readAndWaitMagicDollar();
             //read another 3 bytes
             //buffer[1] = (byte)in.read();
@@ -690,7 +719,7 @@ public class Rtsp {
     }
 
     public static void nonInterleaved(){
-        final Rtsp rtsp = new Rtsp();
+        final RTSP rtsp = new RTSP();
 
         try {
             //rtsp.setDebug(true);
@@ -711,11 +740,9 @@ public class Rtsp {
             int[] ports = {49501, 49502, 49503, 49504};
 
             rtsp.setMap(ports);
-            rtsp.setup(video, ports[0], ports[1], false, "");
+            rtsp.setup(video, false);
             Reply reply = rtsp.getLastReply();
-            String session = reply.getSession();
-            System.out.println(session);
-            rtsp.setup(audio, ports[2], ports[3], false, session);
+            rtsp.setup(audio, false);
 
             File f = new File("0.udp");
             FileOutputStream fOut = new FileOutputStream(f);
@@ -726,7 +753,7 @@ public class Rtsp {
             //outs[0] = fOut;
             outs[0] = oh;
 
-            rtsp.play(session, outs);
+            rtsp.play(outs);
 
             for (int i = 1; i < 6; i++) {
                 Thread.sleep(5000);
@@ -749,10 +776,9 @@ public class Rtsp {
     }
 
     public static void interleaved(){
-        final Rtsp rtsp = new Rtsp();
+        final RTSP rtsp = new RTSP();
 
         try {
-            rtsp.setDebug(true);
             //rtsp.connect(new URI("rtsp://10.112.28.231:554/live1.sdp"));
             rtsp.connect(new URI("rtsp://10.112.28.231:554/live3.sdp"));
             //rtsp.connect(new URI("rtsp://10.113.151.152:554/tcp_live/profile_token_0"));
@@ -774,11 +800,8 @@ public class Rtsp {
             String audio = sdp.getMediaByType(SDP.MediaType.audio).get(0).getAttribute(SDP.AttributeName.control).get(0);
             System.out.println(audio);
 
-            rtsp.setup(video, 0, 1, true, "");
-            Reply reply = rtsp.getLastReply();
-            String session = reply.getSession();
-            System.out.println(session);
-            rtsp.setup(audio, 2, 3, true, session);
+            rtsp.setup(video, true);
+            rtsp.setup(audio, true);
 
             FileOutputStream out = new FileOutputStream("0.tcp");
 
@@ -793,16 +816,18 @@ public class Rtsp {
                 out.write(fmtp.getPps());
             }
 
-            rtsp.play(session, outs);
+            rtsp.play(outs);
+            //hello git
+
 
             for (int i = 1; i < 6; i++) {
                 Thread.sleep(5000);
                 FileOutputStream newOut = new FileOutputStream(i + ".tcp");
                 if(fmtp != null){
-                    out.write(H264RTP.NON_IDR_PICTURE);
-                    out.write(fmtp.getSps());
-                    out.write(H264RTP.NON_IDR_PICTURE);
-                    out.write(fmtp.getPps());
+                    newOut.write(H264RTP.NON_IDR_PICTURE);
+                    newOut.write(fmtp.getSps());
+                    newOut.write(H264RTP.NON_IDR_PICTURE);
+                    newOut.write(fmtp.getPps());
                 }
                 oh.change(newOut);
             }

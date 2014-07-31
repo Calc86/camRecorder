@@ -13,31 +13,20 @@ import java.io.OutputStream;
  */
 //need to check packetization-mode
 // (a=fmtp:96 profile-level-id=420028; packetization-mode=1;sprop-parameter-sets=Z0IAKOkAoAty,aM4xUg==)
-public class H264RTP extends RTP {
-    private NAL nal;
-    private FUHeader FUHeader;
+public class H264RTP implements IRaw{
+    private NAL nal = new NAL();
+    private FUHeader FUHeader = new FUHeader();
+    private RTPWrapper rtp;
     //http://ip.hhi.de/imagecom_G1/assets/pdfs/h264_iso-iec_14496-10.pdf
     public static final byte[] NON_IDR_PICTURE = {0x00, 0x00, 0x00, 0x01};
 
-    private boolean debug = true;
-
-    /*public H264RTP(InputStream in, byte[] buffer, int length) throws IOException {
-        super(in, buffer, length);
-
-        setValues();
-    }*/
-
-    public H264RTP(RTP rtp) {
-        super(rtp);
-
-        setValues();
-
-        //if(debug) print();
+    public H264RTP(RTPWrapper rtp) {
+        this.rtp = rtp;
     }
 
-    private void setValues(){
-        nal = new NAL(getBuffer()[super.getPayloadStart()]);
-        FUHeader = new FUHeader(getBuffer()[super.getPayloadStart() + 1]);
+    public void setValues(){
+        nal.set(rtp.getBuffer()[rtp.getPayloadStart()]);
+        FUHeader.set(rtp.getBuffer()[rtp.getPayloadStart() + 1]);
     }
 
     public NAL getNAL(){
@@ -51,10 +40,10 @@ public class H264RTP extends RTP {
     public int getH264PayloadStart() {
         switch(getNAL().getType()){
             case NAL.FU_A:
-                return super.getPayloadStart() + 2;
+                return rtp.getPayloadStart() + 2;
             case NAL.SPS:
             case NAL.PPS:
-                return super.getPayloadStart();
+                return rtp.getPayloadStart();
             default:
                 throw new NotImplementedException("NAL type " + getNAL().getType() + " not implemented");
         }
@@ -63,17 +52,17 @@ public class H264RTP extends RTP {
     public int getH264PayloadLength() {
         switch(getNAL().getType()){
             case NAL.FU_A:
-                return super.getPayloadLength() - 2;
+                return rtp.getPayloadLength() - 2;
             case NAL.SPS:
             case NAL.PPS:
-                return super.getPayloadLength();
+                return rtp.getPayloadLength();
             default:
                 throw new NotImplementedException("NAL type " + getNAL().getType() + " not implemented");
         }
     }
 
     public byte getReconstructedNal(){
-        byte nal = (byte)(getBuffer()[super.getPayloadStart()] & 0xE0);
+        byte nal = (byte)(rtp.getBuffer()[rtp.getPayloadStart()] & 0xE0);
         nal += getFUHeader().getType();
 
         return nal;
@@ -88,28 +77,33 @@ public class H264RTP extends RTP {
                     //if(debug) System.out.println("first");
                     out.write(H264RTP.NON_IDR_PICTURE);
                     out.write(getReconstructedNal());
-                    out.write(getBuffer(), getH264PayloadStart(), getH264PayloadLength());
+                    out.write(rtp.getBuffer(), getH264PayloadStart(), getH264PayloadLength());
                 } else if(fu.isEnd()){
                     //if(debug) System.out.println("end");
-                    out.write(getBuffer(), getH264PayloadStart(), getH264PayloadLength());
+                    out.write(rtp.getBuffer(), getH264PayloadStart(), getH264PayloadLength());
                 } else{
                     //if(debug) System.out.println("middle");
-                    out.write(getBuffer(), getH264PayloadStart(), getH264PayloadLength());
+                    out.write(rtp.getBuffer(), getH264PayloadStart(), getH264PayloadLength());
                 }
                 break;
             case NAL.SPS: //Sequence parameter set
             case NAL.PPS: //Picture parameter set
                 //System.out.println("sps or pps write");
                 out.write(H264RTP.NON_IDR_PICTURE);
-                out.write(getBuffer(), getPayloadStart(), getPayloadLength());
+                out.write(rtp.getBuffer(), rtp.getPayloadStart(), rtp.getPayloadLength());
                 break;
             default:
                 throw new NotImplementedException("NAL type " + getNAL().getType() + " not implemented");
         }
     }
 
-    @Override
     public void writeRawToStream(OutputStream out) throws IOException {
-        writeRawH264toStream(out);
+        try {
+            writeRawH264toStream(out);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (NotImplementedException e) {
+            System.out.println(e.getMessage());
+        }
     }
 }

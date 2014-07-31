@@ -34,7 +34,6 @@ public class FFmpeg {
             Process pr = rt.exec(command);
 
             int exitVal = pr.waitFor();
-            //delete old file
             if(exitVal == 0)
                 deleteOld(archive);
             else

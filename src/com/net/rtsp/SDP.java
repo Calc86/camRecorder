@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 /**
  * Created by calc on 15.07.14.
@@ -40,6 +41,8 @@ import java.util.Map;
  */
 
 public class SDP {
+    private static Logger log = Logger.getLogger(SDP.class.getName());
+
     public static final String CONTENT_LENGTH = "Content-Length:";
     String packet;
 
@@ -276,6 +279,7 @@ public class SDP {
         quality,
         control,
         fmtp
+        //x-dimensions
     }
 
     public class Media{
@@ -304,7 +308,10 @@ public class SDP {
             String[] elem = line.split(":", 2);
 
             try {
-                AttributeName name = AttributeName.valueOf(elem[0]);
+                AttributeName name = null;
+
+                name = AttributeName.valueOf(elem[0]);
+
 
                 if(elem.length >1 && a.containsKey(name)){
                     a.get(name).add(elem[1]);
@@ -316,8 +323,7 @@ public class SDP {
                     a.put(name, list);
                 }
             } catch (IllegalArgumentException e1) {
-                System.err.println("Unknown a=<name>:... " + elem[0]);
-                e1.printStackTrace();
+                log.warning("Unknown a=<name>:... " + elem[0] + ", " + e1.getMessage());
             }
         }
 

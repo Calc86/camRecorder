@@ -34,6 +34,7 @@ public class RTPWrapper implements IRaw {
 
     //wrappers
     private H264RTP h264 = new H264RTP(this);
+    private JpegRTP jpeg = new JpegRTP(this);
 
     public static byte[] createBuffer(){
         return new byte[MAX_RTP_PACKET_SIZE];
@@ -93,9 +94,9 @@ public class RTPWrapper implements IRaw {
             case RTPWrapper.TYPE_H264:
                 h264.setValues();
                 return h264;
-            /*case RTPWrapper.TYPE_JPEG:
-                return new JpegRTP(this);
-            case RTPWrapper.TYPE_RTCP:
+            case RTPWrapper.TYPE_JPEG:
+                return jpeg;
+            /*case RTPWrapper.TYPE_RTCP:
                 return new RTCP(this);*/
             default:
                 throw new NotImplementedException("rtp type " + getPayloadType() + " not implemented");

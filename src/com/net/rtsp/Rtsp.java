@@ -6,6 +6,7 @@ import com.net.rtp.RTCP;
 import com.net.rtp.RTPWrapper;
 import com.net.utils.BIT;
 import com.net.utils.OutputStreamHolder;
+import com.net.utils.uInt;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
@@ -146,9 +147,6 @@ public class Rtsp {
                 request = uri + path;
         }
 
-        if(!session.equals(""))
-            this.session = session = Reply.SESSION + " " + session + CRLF;
-
         String transport;
         if(interleaved){
             isInterleaved = true;
@@ -174,7 +172,10 @@ public class Rtsp {
         }
 
         if(lastReply.getCode() == RTSP_OK){
-            sources.add(new Source());
+            Source s = new Source();
+            s.ch = map1;
+            s.controlCh = map2;
+            sources.add(s);
         }else{
             log.warning("RTSP Reply code: " + lastReply.getCode());
         }
@@ -421,11 +422,15 @@ public class Rtsp {
     }
 
     private class Source{
+        public int ch;
+        public int controlCh;
         public int SSRC;
         public RTCP lastRTCP;
         public long lastRTCPTime;
         public long jitter;
         public long transit;
+        public int loop;
+        public int sequence;
     }
 
 
@@ -453,37 +458,43 @@ public class Rtsp {
         }
 
         //source param
-        private final Object sync = new Object();
-        private RTCP[] rtcp = new RTCP[4];
-        private long[] lastRtcp = new long[4];
-        long[] s_jitter = new long[4];
-        long[] s_transit = new long[4];
+        //private final Object sync = new Object();
+        //private RTCP[] rtcp = new RTCP[4];
+        //private long[] lastRtcp = new long[4];
+        //long[] s_jitter = new long[4];
+        //long[] s_transit = new long[4];
+
+        private int source(int ch){
+            return (ch / 2);
+        }
 
         public void process() throws IOException {
             stop = false;
 
             byte[] buffer = RTPWrapper.createBuffer();
 
-            final int[] loop = new  int[4];
+            //final int[] loop = new  int[4];
             //for (int i = 0; i < loop.length; i++) loop[i] = 1;
-            final int[] sequence = new int[4];
+            //final int[] sequence = new int[4];
 
             Thread t = new Thread(new Runnable() {
-                private void send(int ch){
-                    if(rtcp[ch*2+1] == null) return;
+                private void send(Source s){
+                    if(s.lastRTCP == null) return;
 
                     ByteArrayOutputStream bo = new ByteArrayOutputStream();
 
-                    byte[] frame = {'$', (byte)(ch*2+1), 0, 52};
+                    byte[] frame = {'$', (byte)s.controlCh, 0, 52};
                     try {
                         bo.write(frame);
-                        RTCP r = rtcp[ch*2+1];
+                        RTCP r = s.lastRTCP;
                         do {
                             if(r.getPT() == RTCP.TYPE_SENDER_REPORT){
-                                bo.write(RTCP.response201(r, loop[ch*2], sequence[ch*2], ch*2+1, lastRtcp[ch*2+1], (int)s_jitter[ch*2]));
+                                bo.write(
+                                        RTCP.response201(r, s.loop, s.sequence, s.controlCh,
+                                                s.lastRTCPTime, (int)s.jitter));
                             }
                             else if(r.getPT() == RTCP.TYPE_SOURCE_DESCRIPTION){
-                                bo.write(RTCP.response202(r, ch*2+1));
+                                bo.write(RTCP.response202(r, s.controlCh));
                             } else {
                                 System.out.println("RTCP Thread - Херня какая то: " + r.getPT());
                             }
@@ -502,9 +513,7 @@ public class Rtsp {
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
-                        synchronized (sync){
-                            send(0);
-                        }
+                        send(sources.get(0));
                         //send ch1
                         try {
                             Thread.sleep(500);
@@ -512,9 +521,7 @@ public class Rtsp {
                             e.printStackTrace();
                         }
                         //send ch2
-                        synchronized (sync){
-                            send(1);
-                        }
+                        send(sources.get(1));
                     }
                 }
             });
@@ -530,12 +537,10 @@ public class Rtsp {
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
-                        synchronized (sync){
-                            try {
-                                getParameter();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
+                        try {
+                            getParameter();
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
                     }
 
@@ -572,34 +577,29 @@ public class Rtsp {
                 byte ch = frame.getChannel();
 
                 //RTCP?
-                /*if(rtp.getPayloadType() == RTPWrapper.TYPE_RTCP){
-                    synchronized (sync){
-                        byte[] rb = new byte[frame.getLength()];
-                        System.arraycopy(buffer, 0, rb, 0, rb.length);
-                        rtcp[ch] = new RTCP(rb, rb.length);    //save last rtsp
-                        lastRtcp[ch] = System.currentTimeMillis();
-                        System.out.println(frame.getLength());
-                    }
+                Source s = sources.get(source(ch));
+                if(rtp.getPayloadType() == RTPWrapper.TYPE_RTCP){
+                    byte[] rb = new byte[frame.getLength()];
+                    System.arraycopy(buffer, 0, rb, 0, rb.length);
+                    s.lastRTCP = new RTCP(rb, rb.length);    //save last rtsp
+                    s.lastRTCPTime = System.currentTimeMillis();
+                    System.out.println(frame.getLength());
                 } else {
                     //вычисление для source параметров (для нужд RTCP)
                     long ts = uInt.get(rtp.getTimestamp());
                     long arrival = System.currentTimeMillis() / 1000L;
                     long transit = arrival - ts;
-                    long d = transit - s_transit[ch];
-                    s_transit[ch] = transit;
+                    long d = transit - s.transit;
+                    s.transit = transit;
                     if(d < 0) d = -d;
-                    synchronized (sync){
-                        s_jitter[ch] += (1./16.) * ((double)d - s_jitter[ch]);
-                        //System.out.println("ch: " + channel + " jitter: " + s_jitter[channel]);
-                    }
+                    s.jitter += (1./16.) * ((double)d - s.jitter);
 
 
-                    int oldSeq = sequence[ch];
+                    int oldSeq = s.sequence;
                     int newSeq = rtp.getSequence();
-                    if(newSeq < oldSeq) loop[ch]++;
-                    sequence[frame.getChannel()] = newSeq;
-                    //System.out.println(channel + ":" + loop[channel] + ":" + sequence[channel]);
-                }*/
+                    if(newSeq < oldSeq) s.loop++;
+                    s.sequence = newSeq;
+                }
 
                 if(os.length <= ch){
                     log.warning("Нужно больше out стримов: " + ch);

@@ -36,7 +36,6 @@ public class Rtsp {
     private final static String USER_AGENT = "LibVLC/2.1.4 (LIVE555 Streaming Media v2014.01.21)";
     private final static String C_SEQ = "CSeq: ";
 
-
     private URI uri;
     private InputStream in;
     private OutputStream out;

@@ -172,17 +172,11 @@ public class Server {
             rtsp.setMap(ports);
             boolean interleaved = true;
 
-            //rtsp.setup(video, 0, 1, true, "");
-            rtsp.setup(video, interleaved);
-            Reply reply = rtsp.getLastReply();
-            String session = reply.getSession();
-            if(reply.getCode() == 403){
+            if(rtsp.setup(video, interleaved) == 403){
                 log.warning("Non interleaved mode not supported");
                 interleaved = !interleaved;
                 rtsp.setup(video, interleaved);
             }
-
-            if(log.isLoggable(Level.FINE)) log.fine("session: " + session);
             rtsp.setup(audio, interleaved);
 
             ByteArrayOutputStream fmtpBuffer = new ByteArrayOutputStream();

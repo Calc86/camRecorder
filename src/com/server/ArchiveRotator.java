@@ -2,37 +2,34 @@ package com.server;
 
 import com.model.Archive;
 import com.model.Cam;
+import com.model.Settings;
 import com.net.utils.OutputStreamHolder;
+import com.video.FFmpeg;
 
 import java.io.*;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.util.Date;
+import java.util.logging.Logger;
 
 /**
  * Created by calc on 25.07.14.
  *
  */
 public class ArchiveRotator extends OutputStreamHolder {
-    public static final String DEFAULT_PATH = "./archive/";
-    private String path = DEFAULT_PATH;
-    //private OutputStreamHolder oh;
+    private static Logger log = Logger.getLogger(ArchiveRotator.class.getName());
     private Cam cam;
+    Archive archive = null;
 
     public ArchiveRotator(Cam cam) {
-        this(cam, DEFAULT_PATH);
+        this.cam = cam;
     }
 
-    public ArchiveRotator(Cam cam, String path) {
-        this.path = path;
-        this.cam = cam;
-
-        File dir = new File(path);
-        dir.mkdir();
+    private String getFilename(Archive archive){
+        return cam.getId() + "_" + archive.getId();
     }
 
     protected FileOutputStream createFile(Archive archive) throws IOException {
-        File f = new File(path + cam.getId() + "_" + archive.getId() + "");
+        File f = new File(Settings.getInstance().getFullTmpPath() + getFilename(archive));
         f.createNewFile();
         return new FileOutputStream(f);
     }
@@ -42,14 +39,23 @@ public class ArchiveRotator extends OutputStreamHolder {
     }
 
     public synchronized void rotate(byte[] preWrite) throws SQLException, IOException {
-        Archive archive = new Archive();
+        Archive oldArchive = archive;
+
+        archive = new Archive();
         archive.setCid(cam.getId());
         archive.setStart(new Date().getTime());
         archive.insert();
+        log.info("new archive id: " + archive.getId());
 
-        FileOutputStream out = createFile(archive);
-        if(preWrite != null) out.write(preWrite);
+        FileOutputStream fOut = createFile(archive);
+        BufferedOutputStream bufferedOut = new BufferedOutputStream(fOut, 5*1024*1024);
+        if(preWrite != null) bufferedOut.write(preWrite);
 
-        change(out);
+        change(bufferedOut);
+
+        if(oldArchive != null){
+            FFmpeg ffmpeg = new FFmpeg();
+            ffmpeg.move(getFilename(oldArchive));
+        }
     }
 }

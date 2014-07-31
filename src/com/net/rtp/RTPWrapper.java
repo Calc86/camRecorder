@@ -11,7 +11,7 @@ import java.io.OutputStream;
  * Created by calc on 15.07.14.
  *
  */
-public class RTP {
+public class RTPWrapper implements IRaw {
     public static final int MAX_RTP_PACKET_SIZE = 65536;
 
     public static final byte TYPE_JPEG = 26;    //rfc2435
@@ -30,31 +30,57 @@ public class RTP {
     protected Flag flag;
 
     private byte[] packet;
-    //private int start = 0;
     private int length;
+
+    //wrappers
+    private H264RTP h264 = new H264RTP(this);
 
     public static byte[] createBuffer(){
         return new byte[MAX_RTP_PACKET_SIZE];
     }
 
-    public RTP(InputStream in, byte[] buffer, int length) throws IOException {
+    public RTPWrapper(byte[] buffer, int length){
         this.length = length;
-        //packet = new byte[length];
         packet = buffer;
+    }
 
-        for (int i = 0; i < length; i++) {
-            packet[i] = (byte) in.read();
+    public void fill(InputStream in, int length) throws IOException {
+        if(packet.length < length)
+            throw new IllegalStateException("buffer size is " + packet.length + " needed + " + length);
+
+        this.length = length;
+        int readed = 0;
+        while(readed < length){
+            readed += in.read(packet, readed, length - readed);
         }
     }
 
-    public RTP(byte[] buffer, int length){
-        this.length = length;
-        packet = buffer;
-    }
-
-    public RTP(RTP rtp){
+    public RTPWrapper(RTPWrapper rtp){
         length = rtp.getLength();
         packet = rtp.getBuffer();
+    }
+
+    /*public RTPWrapper(){
+
+    }*/
+
+    /**
+     *
+     * @return класс, который обрабатывает определенный тип payload
+     * @throws NotImplementedException
+     */
+    public RTPWrapper getRtpByPayload() throws NotImplementedException {
+        switch (getPayloadType()){
+            case RTPWrapper.TYPE_H264:
+                //return new H264RTP(this);
+                return null;
+            /*case RTPWrapper.TYPE_JPEG:
+                return new JpegRTP(this);
+            case RTPWrapper.TYPE_RTCP:
+                return new RTCP(this);*/
+            default:
+                throw new NotImplementedException("rtp type " + getPayloadType() + " not implemented");
+        }
     }
 
     /**
@@ -62,14 +88,15 @@ public class RTP {
      * @return класс, который обрабатывает определенный тип payload
      * @throws NotImplementedException
      */
-    public RTP getRtpByPayload() throws NotImplementedException {
+    public IRaw getByPayload() throws NotImplementedException {
         switch (getPayloadType()){
-            case RTP.TYPE_H264:
-                return new H264RTP(this);
-            case RTP.TYPE_JPEG:
+            case RTPWrapper.TYPE_H264:
+                h264.setValues();
+                return h264;
+            /*case RTPWrapper.TYPE_JPEG:
                 return new JpegRTP(this);
-            case RTP.TYPE_RTCP:
-                return new RTCP(this);
+            case RTPWrapper.TYPE_RTCP:
+                return new RTCP(this);*/
             default:
                 throw new NotImplementedException("rtp type " + getPayloadType() + " not implemented");
         }
@@ -77,21 +104,12 @@ public class RTP {
 
     public void writeRawToStream(OutputStream out) throws IOException {
         System.err.println("NOTICE: Raw RTP payload write");
+        System.out.println("type: " + getPayloadType());
         out.write(packet, getPayloadStart(), getPayloadLength());
     }
 
     public byte[] getBuffer() {
         return packet;
-    }
-
-    /**
-     *
-     * @return copy of packet
-     */
-    public byte[] getPacketCopy() {
-        byte[] copy = new byte[length];
-        System.arraycopy(packet, 0, copy, 0, length);
-        return copy;
     }
 
     /**
@@ -211,5 +229,9 @@ public class RTP {
 
     public int getLength() {
         return length;
+    }
+
+    public void setLength(int length) {
+        this.length = length;
     }
 }

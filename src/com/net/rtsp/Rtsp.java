@@ -291,13 +291,45 @@ public class Rtsp {
     }
 
     private abstract class Process{
+        private Thread getParameterThread;
+
         protected Process(OutputStream[] os) {
             this.os = os;
         }
 
         protected OutputStream[] os;
-        abstract public void processAll() throws IOException;
-        abstract public void stop();
+        public void processAll() throws IOException{
+            getParameterThread = createGetParameterThread();
+            getParameterThread.start();
+        }
+
+        public void stop(){
+            getParameterThread.interrupt();
+            try {
+                getParameterThread.join();
+            } catch (InterruptedException e) {
+                //e.printStackTrace();
+            }
+        }
+
+        protected Thread createGetParameterThread(){
+            return new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    while(!stop){
+                        try {
+                            Thread.sleep(55000);
+                            getParameter();
+                        } catch (InterruptedException e) {
+                            //e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                }
+            });
+        }
     }
 
     private class NonInterleavedProcess extends Process{
@@ -308,22 +340,34 @@ public class Rtsp {
             super(os);
         }
 
-        @Override
-        public void processAll() throws SocketException {
+        private void createSockets() throws SocketException {
             ss = new DatagramSocket[map.length];
 
             for (int i = 0; i < map.length; i++) {
                 ss[i] = new DatagramSocket(map[i]);
             }
+        }
 
+        private void createThreads(){
             ts = new Thread[map.length];
             for (int i = 0; i < map.length; i++) {
                 ts[i] = new Thread(new UDPThread(this, i));
             }
+        }
 
+        private void runThreads(){
             for (int i = 0; i < map.length; i++) {
                 ts[i].start();
             }
+        }
+
+        @Override
+        public void processAll() throws IOException {
+            super.processAll();
+
+            createSockets();
+            createThreads();
+            runThreads();
         }
 
         public void process(int channel) throws IOException {
@@ -333,6 +377,7 @@ public class Rtsp {
             ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
             int seqFloor = 0;   //"пол" - минимальное значение, до которого пакеты откидываются (нам уже не интересны)
 
+            RTPWrapper rtp = new RTPWrapper(buffer, buffer.length);
             while(!stop){
                 try {
                     ss[channel].receive(packet);
@@ -342,14 +387,16 @@ public class Rtsp {
                 }
 
                 //RTPWrapper rtp = new RTPWrapper(buffer, packet.getLength());
-                RTPWrapper rtp;
+                rtp.setLength(packet.getLength());
+                IRaw raw = rtp;
                 try {
-                    rtp = (new RTPWrapper(buffer, packet.getLength())).getRtpByPayload();
+                    raw = rtp.getByPayload();
                 } catch (NotImplementedException e){
-                    log.finest(e.getMessage());
+                    log.warning(e.getMessage());
                     continue;
                 }
 
+                //процесс RTCP
                 /*if(rtp.getPayloadType() == RTPWrapper.TYPE_RTCP){
                     RTCP rtcp = (RTCP)rtp;
 
@@ -378,12 +425,12 @@ public class Rtsp {
                     }
                 }*/
 
+                //вообще перестать заботится об ауте RTCP
                 if(os[channel] == null) continue;
 
-                rtp.writeRawToStream(byteOut);
+                raw.writeRawToStream(byteOut);
 
                 //if(rtp.getSequence() > seqFloor){       //все пакеты меньше "пола" тупо пропускаем...
-                byteOut.flush();
                 sequencedPackets.put(rtp.getSequence(), byteOut.toByteArray()); //сохраняем пакет в сортировочную машину.
                 byteOut.reset();
                 //}
@@ -426,12 +473,15 @@ public class Rtsp {
         }
 
         public void stop() {
+            super.stop();
+
             for(DatagramSocket s : ss){
                 s.close();
             }
 
             for(Thread t : ts){
                 try {
+                    t.interrupt();
                     t.join();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -450,6 +500,33 @@ public class Rtsp {
         public long transit;
         public int loop;
         public int sequence;
+
+        //Перевезти в эти переменные массив os[]
+        private OutputStream dataOut;
+        private OutputStream controlOut;
+
+        public void calculate(RTPWrapper rtp){
+            long ts = uInt.get(rtp.getTimestamp());
+            long arrival = System.currentTimeMillis() / 1000L;
+            long transit = arrival - ts;
+            long d = transit - this.transit;
+            this.transit = transit;
+            if(d < 0) d = -d;
+            jitter += (1./16.) * ((double)d - jitter);
+
+            int oldSeq = sequence;
+            int newSeq = rtp.getSequence();
+            if(newSeq < oldSeq) loop++;
+            sequence = newSeq;
+        }
+
+        public void setDataOut(OutputStream dataOut) {
+            this.dataOut = dataOut;
+        }
+
+        public void setControlOut(OutputStream controlOut) {
+            this.controlOut = controlOut;
+        }
     }
 
 
@@ -462,6 +539,8 @@ public class Rtsp {
 
         @Override
         public void processAll() throws IOException {
+            super.processAll();
+
             t = new Thread(new Runnable() {
                 @Override
                 public void run() {
@@ -475,13 +554,6 @@ public class Rtsp {
 
             t.start();
         }
-
-        //source param
-        //private final Object sync = new Object();
-        //private RTCP[] rtcp = new RTCP[4];
-        //private long[] lastRtcp = new long[4];
-        //long[] s_jitter = new long[4];
-        //long[] s_transit = new long[4];
 
         private int source(int ch){
             return (ch / 2);
@@ -537,26 +609,6 @@ public class Rtsp {
                 }
             });
         }
-        private Thread createGetParameterThread(){
-            return new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    while(!stop){
-                        try {
-                            Thread.sleep(55000);
-                        } catch (InterruptedException e) {
-                            //e.printStackTrace();
-                        }
-                        try {
-                            getParameter();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    }
-
-                }
-            });
-        }
 
         public void process() throws IOException {
             stop = false;
@@ -596,7 +648,7 @@ public class Rtsp {
 
                 byte ch = frame.getChannel();
 
-                //RTCP?
+                //RTCP? //прошивка D-link DCS2103 1.00 слала RTCP и interleaved
                 Source s = sources.get(source(ch));
                 if(rtp.getPayloadType() == RTPWrapper.TYPE_RTCP){
                     byte[] rb = new byte[frame.getLength()];
@@ -605,19 +657,7 @@ public class Rtsp {
                     s.lastRTCPTime = System.currentTimeMillis();
                     System.out.println(frame.getLength());
                 } else {
-                    //вычисление для source параметров (для нужд RTCP)
-                    long ts = uInt.get(rtp.getTimestamp());
-                    long arrival = System.currentTimeMillis() / 1000L;
-                    long transit = arrival - ts;
-                    long d = transit - s.transit;
-                    s.transit = transit;
-                    if(d < 0) d = -d;
-                    s.jitter += (1./16.) * ((double)d - s.jitter);
-
-                    int oldSeq = s.sequence;
-                    int newSeq = rtp.getSequence();
-                    if(newSeq < oldSeq) s.loop++;
-                    s.sequence = newSeq;
+                    s.calculate(rtp); //вычисление для source параметров (для нужд RTCP)
                 }
 
                 if(os.length <= ch){
@@ -625,12 +665,9 @@ public class Rtsp {
                     continue;
                 }
 
-                //if(justRead) continue;
                 if(os[ch] == null) continue;
-                //if(justRead) continue;
 
                 synchronized (os[ch]){
-                    //rtp.writeRawToStream(os[channel]);
                     raw.writeRawToStream(os[ch]);
                 }
             }
@@ -647,6 +684,8 @@ public class Rtsp {
 
         @Override
         public void stop() {
+            super.stop();
+
             try {
                 t.interrupt();
                 t.join();

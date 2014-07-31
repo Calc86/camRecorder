@@ -14,7 +14,28 @@ public class Settings implements Serializable {
 
     private String vlcPath = "";
     private String ffmpegPath = "";
+    private boolean debug = true;
     private int seconds = 600;
+
+    private String archivePath = "archive";
+    private String tmpPath = "temp";
+    private String recPath = "rec";
+
+    public void mkDirs(){
+        File f;
+
+        f = new File(archivePath);
+        if(f.exists())
+            f.mkdir();
+
+        f = new File(archivePath + "/" + tmpPath);
+        if(!f.exists())
+            f.mkdir();
+
+        f = new File(archivePath + "/" + recPath);
+        if(!f.exists())
+            f.mkdir();
+    }
 
     public synchronized static Settings getInstance(){
         try {
@@ -26,19 +47,22 @@ public class Settings implements Serializable {
     }
 
     public static Settings load() throws IOException {
+        Settings settings = null;
         FileInputStream fis = null;
         try {
             fis = new FileInputStream(file);
+
+            ObjectInputStream ois = new ObjectInputStream(fis);
+            settings = (Settings)ois.readObject();
+
         } catch (FileNotFoundException e) {
-            return new Settings();
+            settings = new Settings();
+        } catch (ClassNotFoundException e) {
+            settings = new Settings();
         }
 
-        ObjectInputStream ois = new ObjectInputStream(fis);
-        try {
-            return (Settings)ois.readObject();
-        } catch (ClassNotFoundException e) {
-            return new Settings();
-        }
+        settings.mkDirs();
+        return settings;
     }
 
     public void save() throws IOException {
@@ -71,5 +95,41 @@ public class Settings implements Serializable {
 
     public void setSeconds(int seconds) {
         this.seconds = seconds;
+    }
+
+    public String getArchivePath() {
+        return archivePath;
+    }
+
+    public void setArchivePath(String archivePath) {
+        this.archivePath = archivePath;
+    }
+
+    public String getTmpPath() {
+        return tmpPath;
+    }
+
+    public void setTmpPath(String tmpPath) {
+        this.tmpPath = tmpPath;
+    }
+
+    public String getRecPath() {
+        return recPath;
+    }
+
+    public void setRecPath(String recPath) {
+        this.recPath = recPath;
+    }
+
+    public String getFullTmpPath(){
+        return getArchivePath() + "/" + getTmpPath() + "/";
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public void setDebug(boolean debug) {
+        this.debug = debug;
     }
 }

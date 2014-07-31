@@ -586,7 +586,6 @@ public class Rtsp {
                     try {
                         raw = rtp.getByPayload();
                     } catch (NotImplementedException e) {
-                        //if(log.isLoggable(Level.FINE)) log.fine(e.getMessage());
                         System.out.println(frame);
                         log.warning("rtp seq=" + rtp.getSequence() + ": " + e.getMessage());
                     }
@@ -698,7 +697,11 @@ public class Rtsp {
             if(ch == -1) throw new IOException("End of stream reached");
             buffer[1] = (byte)in.read();
             readed++;
-            //if(buffer[1] < 0 || buffer[1] >3) readAndWaitMagicDollar();
+            //костыль с проблемами...
+            if(buffer[1] < 0 || buffer[1] > sources.size()){
+                readAndWaitMagicDollar();
+                log.warning("wring frame, channel: " + buffer[1]);
+            }
         }
 
         public byte getChannel(){

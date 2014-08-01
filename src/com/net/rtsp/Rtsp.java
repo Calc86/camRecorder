@@ -39,6 +39,7 @@ public class Rtsp {
     private URI uri;
     private InputStream in;
     private OutputStream out;
+    private int localRtspPort = 0;
 
     private int sequence = 1;
     private Reply lastReply;
@@ -64,8 +65,9 @@ public class Rtsp {
         if(port == -1) port = DEFAULT_RTSP_PORT;
 
         Socket socket = new Socket(host, port);
+        localRtspPort = socket.getLocalPort();
         socket.setSoTimeout(SOCKET_READ_TIMEOUT);
-        socket.setReceiveBufferSize(30 * 1024 * 1024);
+        socket.setReceiveBufferSize(5 * 1024 * 1024);
         log.info("socket receive buffer size: " + socket.getReceiveBufferSize());
 
         in = socket.getInputStream();
@@ -194,8 +196,6 @@ public class Rtsp {
     }
 
     public int play(final OutputStream[] os) throws IOException {
-        sequence++;
-
         String packet = "PLAY " + uri + " " + PROTOCOL + CRLF +
                 C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
@@ -222,8 +222,6 @@ public class Rtsp {
     }
 
     public void getParameter() throws IOException {
-        sequence++;
-
         String packet = "GET_PARAMETER " + uri + " " + PROTOCOL + CRLF +
                 C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
@@ -270,7 +268,7 @@ public class Rtsp {
         while(!end){
             String line = readLine();
             reply += line + CRLF;
-            System.out.println(line);
+            if(log.isLoggable(Level.FINE)) log.fine(line);
             if(line.equals("")) end = true;
         }
 
@@ -617,8 +615,8 @@ public class Rtsp {
 
             Thread t = createRTCPThread();
             //t.start();
-            Thread t2 = createGetParameterThread();
-            t2.start();
+            //Thread t2 = createGetParameterThread();
+            //t2.start();
 
             //for test purposes
             boolean justRead = true;
@@ -631,7 +629,7 @@ public class Rtsp {
                 IRaw raw = rtp;
                 //читаем фрейм
                 try {
-                    frame.fill(in);
+                    while(!frame.fill(in));
 
                     //полюбому читаем rtp пакет
                     rtp.fill(in, frame.getLength());
@@ -673,10 +671,10 @@ public class Rtsp {
             }
 
             t.interrupt();
-            t2.interrupt();
+            //t2.interrupt();
             try {
                 t.join();
-                t2.join();
+                //t2.join();
             } catch (InterruptedException e) {
                 //e.printStackTrace();
             }
@@ -695,66 +693,68 @@ public class Rtsp {
         }
     }
 
+    private byte[] interleavedFrame = new byte[4];
+
     /**
      * Magic: 0x24      1 byte
      * Channel: 0x00    1 byte
      * Length: 0x0000   2 bytes
      */
     private class RTSPInterleavedFrameWrapper {
-        private byte[] buffer = new byte[4];
-        public int readed = 0;
+        private int magic = -1;
+        private int channel = -1;
+        private byte[] length = new byte[2];
 
-        public void fill(InputStream in) throws IOException {
-            readed = 0;
-            readAndWaitMagicDollar();
+        public boolean fill(InputStream in) throws IOException {
+            waitMagic();
+            channel = in.read();
+            if(!validate()) return false;
             //read another 3 bytes
             //buffer[1] = (byte)in.read();
-            buffer[2] = (byte)in.read();
-            readed++;
-            buffer[3] = (byte)in.read();
-            readed++;
+            length[0] = (byte)in.read();
+            length[1] = (byte)in.read();
+            return true;
+        }
+
+        private void waitMagic() throws IOException {
+            int readed = 0;
+            int ch;
+            while( (ch = in.read()) != 0x24){
+                if(ch == -1) throw new IOException("End of stream reached");
+                readed++;
+                System.out.print(String.format("%c", (char) ch));
+            }
+        }
+
+        private boolean validate(){
+            if(channel < 0 || channel > sources.size() * 2){
+                log.warning("wrong frame, channel: " + channel +
+                    "\nlast seq of source 0 (on port=" + localRtspPort + "): " + sources.get(0).sequence);
+                return false;
+            }
+            return true;
         }
 
         @Override
         public String toString() {
             return "RTSP Interleaved Frame:"
-                    + "\nMagic: " + buffer[0]
-                    + "\nChannel: " + buffer[1]
-                    + "\nLength: " + BIT.makeShort(buffer, 2);
-        }
-
-        private void readAndWaitMagicDollar() throws IOException {
-            int ch = 0;
-            //while( (buffer[0] = (byte)in.read()) != 0x24){
-            while( (ch = in.read()) != -1){
-                readed++;
-                buffer[0] = (byte)ch;
-                if(buffer[0] == 0x24) break;
-                /*log.warning(String.format("$ error: %d, %x, %c",
-                        buffer[0], buffer[0], (char)buffer[0]));*/
-            }
-            if(ch == -1) throw new IOException("End of stream reached");
-            buffer[1] = (byte)in.read();
-            readed++;
-            //костыль с проблемами...
-            if(buffer[1] < 0 || buffer[1] > sources.size()){
-                readAndWaitMagicDollar();
-                log.warning("wring frame, channel: " + buffer[1]);
-            }
+                    + "\nMagic: " + magic
+                    + "\nChannel: " + channel
+                    + "\nLength: " + getLength();
         }
 
         public byte getChannel(){
-            return buffer[1];
+            return (byte)channel;
         }
 
         public int getLength(){
-            return BIT.makeShort(buffer, 2);
+            return BIT.makeShort(length, 0);
         }
 
-        public void setLength(int length){
+        /*public void setLength(int length){
             buffer[2] = BIT.HiByte(BIT.LoWord(length));
             buffer[3] = BIT.LoByte(BIT.LoWord(length));
-        }
+        }*/
     }
 
     public void stop(){

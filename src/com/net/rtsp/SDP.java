@@ -41,7 +41,7 @@ import java.util.logging.Logger;
  */
 
 public class SDP {
-    private static Logger log = Logger.getLogger(SDP.class.getName());
+    private static Logger log = Logger.getLogger("main");
 
     public static final String CONTENT_LENGTH = "Content-Length:";
     String packet;
@@ -364,5 +364,30 @@ public class SDP {
         public String getFmt() {
             return fmt;
         }
+
+        @Override
+        public String toString() {
+            return "Media{" +
+                    "line='" + line + '\'' +
+                    ", media=" + media +
+                    ", port='" + port + '\'' +
+                    ", proto='" + proto + '\'' +
+                    ", fmt='" + fmt + '\'' +
+                    ", a=" + a +
+                    '}';
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "SDP{" +
+                "packet='" + packet + '\'' +
+                ", v=" + v +
+                ", o=" + o +
+                ", s='" + s + '\'' +
+                ", c='" + c + '\'' +
+                ", m=" + m +
+                ", currentMedia=" + currentMedia +
+                '}';
     }
 }

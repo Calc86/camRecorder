@@ -17,7 +17,7 @@ public class AddDialog extends JDialog {
     private URI url = null;
 
     public AddDialog(Frame owner) {
-        super(owner, true);
+        super(owner, "Add", true);
 
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         //getContentPane().setBor

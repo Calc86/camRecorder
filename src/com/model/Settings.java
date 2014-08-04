@@ -125,6 +125,10 @@ public class Settings implements Serializable {
         return getArchivePath() + "/" + getTmpPath() + "/";
     }
 
+    public String getFullRecPath(){
+        return getArchivePath() + "/" + getRecPath() + "/";
+    }
+
     public boolean isDebug() {
         return debug;
     }

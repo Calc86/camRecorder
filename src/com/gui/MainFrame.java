@@ -15,6 +15,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.logging.*;
 
@@ -23,7 +25,7 @@ import java.util.logging.*;
  *
  */
 public class MainFrame {
-    private static Logger log = Logger.getLogger(Server.class.getName());
+    private static Logger log = Logger.getLogger("main");
 
     private JFrame frame;
     private JTree tree;
@@ -226,9 +228,21 @@ public class MainFrame {
         //http://stackoverflow.com/questions/5817738/how-to-use-log-levels-in-java
 
         //LogManager.getLogManager().readConfiguration(new FileInputStream("./log.cfg"));
+        log.setUseParentHandlers(false);
         Handler consoleHandler = new ConsoleHandler();
         consoleHandler.setLevel(Level.FINER);
-        Logger.getAnonymousLogger().addHandler(consoleHandler);
+        consoleHandler.setFormatter(new Formatter() {
+            @Override
+            public String format(LogRecord record) {
+                Date d = new Date();
+                SimpleDateFormat date = new SimpleDateFormat("[YYYY-MM-dd hh:mm:ss] ");
+                return date.format(d) + record.getLevel() + "("
+                        + record.getSourceClassName() + " "
+                        + record.getSourceMethodName() + "): "
+                        + record.getMessage() + "\n";
+            }
+        });
+        log.addHandler(consoleHandler);
 
         log.finest("finest");
         log.finer("finer");

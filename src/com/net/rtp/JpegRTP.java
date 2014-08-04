@@ -15,7 +15,7 @@ import java.util.logging.Logger;
  *
  */
 public class JpegRTP implements IRaw {
-    private static Logger log = Logger.getLogger(Server.class.getName());
+    private static Logger log = Logger.getLogger("main");
 
     public static final int JPEG_HEADER_SIZE = 8;
     public static final int JPEG_RESTART_MARKER_HEADER_SIZE = 4;

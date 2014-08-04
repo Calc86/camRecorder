@@ -24,12 +24,8 @@ public class ArchiveRotator extends OutputStreamHolder {
         this.cam = cam;
     }
 
-    private String getFilename(Archive archive){
-        return cam.getId() + "_" + archive.getId();
-    }
-
     protected FileOutputStream createFile(Archive archive) throws IOException {
-        File f = new File(Settings.getInstance().getFullTmpPath() + getFilename(archive));
+        File f = new File(Settings.getInstance().getFullTmpPath() + archive.getFileName());
         f.createNewFile();
         return new FileOutputStream(f);
     }
@@ -55,7 +51,7 @@ public class ArchiveRotator extends OutputStreamHolder {
 
         if(oldArchive != null){
             FFmpeg ffmpeg = new FFmpeg();
-            ffmpeg.move(getFilename(oldArchive));
+            ffmpeg.move(oldArchive.getFileName());
         }
     }
 }

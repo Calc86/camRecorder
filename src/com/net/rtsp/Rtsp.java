@@ -4,9 +4,7 @@ import com.net.rtp.H264RTP;
 import com.net.rtp.IRaw;
 import com.net.rtp.RTCP;
 import com.net.rtp.RTPWrapper;
-import com.net.utils.BIT;
-import com.net.utils.OutputStreamHolder;
-import com.net.utils.uInt;
+import com.net.utils.*;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
@@ -18,11 +16,21 @@ import java.util.logging.Logger;
 
 /**
  * Created by calc on 14.07.14.
+ * Класс для работы с RTSP UDP и TCP
+ * Есть ограничения на скорость потока.
+ * В идеале работает (TCP) если в секунду валится не больше 400 пакетов (в среднем 4Мбита в секунду).
+ * Ограничения накладываются "правильным" потоком камеры (Задержка в RTSPInterleavedFrame) и
+ * скорости записи OutputStream.
+ * Камеры D-link периодически шлют всякую хрень (RTSP continuation)
  *
+ * TODO:
+ * 1) Заполенине правильных данных в RTCP (для моих тестовых камер он не требовался)
+ * 2) Лучше слить классы Interleaved и NonInterleaved
+ * 3) Правильное завершение сеанса (RTSP Shutdown)
  */
 public class Rtsp {
     public static final int RTSP_OK = 200;
-    private static Logger log = Logger.getLogger(Rtsp.class.getName());
+    private static Logger log = Logger.getLogger("main");
 
     //constants
     public static final int PACKET_BUFFER_COUNT = 100;
@@ -83,8 +91,11 @@ public class Rtsp {
         send(packet);
     }
 
+    public boolean isStop() {
+        return stop;
+    }
+
     public SDP describe() throws IOException {
-        log.info("describe");
         String packet = "DESCRIBE " + uri + " " + PROTOCOL + CRLF +
                 C_SEQ + sequence + CRLF +
                 "User-Agent: " + USER_AGENT + CRLF +
@@ -142,8 +153,6 @@ public class Rtsp {
         int map1 = (sources.size()) * 2;
         int map2 = map1 + 1;
 
-        log.info(String.format("setup path %s, map %d-%d, interleaved %b, session %s",
-                path, map1, map2, interleaved, session));
         String request;
         if(path.substring(0, 5).equals("rtsp:"))
             request = path;
@@ -297,6 +306,8 @@ public class Rtsp {
 
         protected OutputStream[] os;
         public void processAll() throws IOException{
+            stop = false;
+
             getParameterThread = createGetParameterThread();
             getParameterThread.start();
         }
@@ -321,10 +332,12 @@ public class Rtsp {
                         } catch (InterruptedException e) {
                             //e.printStackTrace();
                         } catch (IOException e) {
-                            e.printStackTrace();
+                            log.log(
+                                    Level.SEVERE, uri + ": " + e.getMessage() + "\n" + ExceptionUtils.getStackTrace(e) + "\n stop"
+                            );
+                            stop();
                         }
                     }
-
                 }
             });
         }
@@ -390,8 +403,7 @@ public class Rtsp {
                 try {
                     raw = rtp.getByPayload();
                 } catch (NotImplementedException e){
-                    log.warning(e.getMessage());
-                    continue;
+                    if(log.isLoggable(Level.FINE)) log.fine("rtp seq=" + rtp.getSequence() + ": " + e.getMessage());
                 }
 
                 //процесс RTCP
@@ -545,7 +557,9 @@ public class Rtsp {
                     try {
                         process();
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        log.warning("stop on exception:" + e.getMessage());
+                        stop = true;
+                        //e.printStackTrace();
                     }
                 }
             });
@@ -609,8 +623,6 @@ public class Rtsp {
         }
 
         public void process() throws IOException {
-            stop = false;
-
             byte[] buffer = RTPWrapper.createBuffer();
 
             Thread t = createRTCPThread();
@@ -625,19 +637,21 @@ public class Rtsp {
             RTSPInterleavedFrameWrapper frame = new RTSPInterleavedFrameWrapper();
             RTPWrapper rtp = new RTPWrapper(buffer, buffer.length);
 
+            Profiler profiler = new Profiler(0);
+            Counter counter = new Counter(uri.getHost());
             while(!stop){
                 IRaw raw = rtp;
                 //читаем фрейм
                 try {
                     while(!frame.fill(in));
 
+                    profiler.start();
                     //полюбому читаем rtp пакет
                     rtp.fill(in, frame.getLength());
                     try {
                         raw = rtp.getByPayload();
                     } catch (NotImplementedException e) {
-                        System.out.println(frame);
-                        log.warning("rtp seq=" + rtp.getSequence() + ": " + e.getMessage());
+                        if(log.isLoggable(Level.FINE)) log.fine("rtp seq=" + rtp.getSequence() + ": " + e.getMessage());
                     }
                 } catch (SocketException e) {
                     log.warning(e.getMessage()); //socket closed?
@@ -663,6 +677,9 @@ public class Rtsp {
                     continue;
                 }
 
+                profiler.stop();
+                counter.count(profiler.getLast(), frame.getLength() / 1000.0);
+                //profiler.print(0);
                 if(os[ch] == null) continue;
 
                 synchronized (os[ch]){
@@ -718,16 +735,15 @@ public class Rtsp {
 
         private void waitMagic() throws IOException {
             int readed = 0;
-            int ch;
-            while( (ch = in.read()) != 0x24){
-                if(ch == -1) throw new IOException("End of stream reached");
+            while( (magic = in.read()) != 0x24){
+                if(magic == -1) throw new IOException("End of stream reached");
                 readed++;
-                System.out.print(String.format("%c", (char) ch));
+                //System.out.print(String.format("%c", (char) magic));
             }
         }
 
         private boolean validate(){
-            if(channel < 0 || channel > sources.size() * 2){
+            if(channel < 0 || channel >= sources.size() * 2){
                 log.warning("wrong frame, channel: " + channel +
                     "\nlast seq of source 0 (on port=" + localRtspPort + "): " + sources.get(0).sequence);
                 return false;

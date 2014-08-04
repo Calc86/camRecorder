@@ -15,7 +15,7 @@ import java.util.logging.Logger;
  *
  */
 public class FFmpeg {
-    private static Logger log = Logger.getLogger(Server.class.getName());
+    private static Logger log = Logger.getLogger("main");
 
     public void deleteOld(String archive){
         File f = new File(Settings.getInstance().getFullTmpPath() + archive);

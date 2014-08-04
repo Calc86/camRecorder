@@ -1,19 +1,19 @@
 package com.model;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Created by calc on 22.07.14.
  *
  */
 abstract public class Model {
+    private static Logger log = Logger.getLogger("main");
+
     private final static Object sync = new Object();
     //protected String table;
     protected long id;
@@ -90,6 +90,7 @@ abstract public class Model {
         if(!where.equals("")) sql += " where " + where;
         sql += ";";
 
+        log.info(sql);
         Statement statement = Database.getConnection().createStatement();
         ResultSet rs = statement.executeQuery(sql);
 

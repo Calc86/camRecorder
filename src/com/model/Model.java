@@ -14,6 +14,7 @@ import java.util.List;
  *
  */
 abstract public class Model {
+    private final static Object sync = new Object();
     //protected String table;
     protected long id;
 
@@ -31,29 +32,33 @@ abstract public class Model {
         execute(getSaveSql());
     }
 
-    private synchronized long execute(String sql) throws SQLException {
-        long lID = 0;
-        Statement statement = Database.getConnection().createStatement();
-        statement.executeUpdate(sql);
-        if(statement.getGeneratedKeys().next()){
-            lID = statement.getGeneratedKeys().getLong(1);
-        }
-        statement.close();
+    private long execute(String sql) throws SQLException {
+        synchronized (sync){
+            long lID = 0;
+            Statement statement = Database.getConnection().createStatement();
+            statement.executeUpdate(sql);
+            if(statement.getGeneratedKeys().next()){
+                lID = statement.getGeneratedKeys().getLong(1);
+            }
+            statement.close();
 
-        return lID;
+            return lID;
+        }
     }
 
-    public synchronized void delete() throws SQLException {
-        String sql = "DELETE FROM " + getTableName() + " where ID = " + id + ";";
-        Statement statement = Database.getConnection().createStatement();
-        statement.executeUpdate(sql);
+    public void delete() throws SQLException {
+        synchronized (sync){
+            String sql = "DELETE FROM " + getTableName() + " where ID = " + id + ";";
+            Statement statement = Database.getConnection().createStatement();
+            statement.executeUpdate(sql);
+        }
     }
 
     public long getId() {
         return id;
     }
 
-    protected synchronized void fromResult(ResultSet rs) throws SQLException {
+    protected void fromResult(ResultSet rs) throws SQLException {
         id = rs.getInt("ID");
         childFromResult(rs);
     }
@@ -76,7 +81,7 @@ abstract public class Model {
 
     protected abstract Model create();
 
-    public static <T extends Model> List<T> selectAll(T model) throws SQLException {
+    public synchronized static <T extends Model> List<T> selectAll(T model) throws SQLException {
         return select(model, "");
     }
 

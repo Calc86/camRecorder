@@ -9,6 +9,7 @@ import com.net.rtsp.Rtsp;
 import com.net.rtsp.SDP;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import sun.java2d.SurfaceDataProxy;
 
 import java.io.*;
 import java.net.MalformedURLException;
@@ -24,7 +25,7 @@ import java.util.logging.Logger;
  *
  */
 public class Server {
-    private static Logger log = Logger.getLogger(Server.class.getName());
+    private static Logger log = Logger.getLogger("main");
 
     List<Thread> threads = new ArrayList<Thread>();
     private boolean stop = true;
@@ -92,6 +93,7 @@ public class Server {
         stop = true;
 
         for(Thread t : threads){
+            t.interrupt();
             try {
                 t.join();
             } catch (InterruptedException e) {
@@ -181,10 +183,14 @@ public class Server {
 
             ByteArrayOutputStream fmtpBuffer = new ByteArrayOutputStream();
             if(fmtp != null){
-                fmtpBuffer.write(H264RTP.NON_IDR_PICTURE);
-                fmtpBuffer.write(fmtp.getSps());
-                fmtpBuffer.write(H264RTP.NON_IDR_PICTURE);
-                fmtpBuffer.write(fmtp.getPps());
+                if(fmtp.getSps() != null){
+                    fmtpBuffer.write(H264RTP.NON_IDR_PICTURE);
+                    fmtpBuffer.write(fmtp.getSps());
+                }
+                if(fmtp.getPps() != null){
+                    fmtpBuffer.write(H264RTP.NON_IDR_PICTURE);
+                    fmtpBuffer.write(fmtp.getPps());
+                }
             }
 
             OutputStream[] outs = new OutputStream[4];
@@ -196,10 +202,14 @@ public class Server {
 
             rtsp.play(outs);
 
-            while (!stop){
+            while (!rtsp.isStop() && !stop){
                 int wait = Settings.getInstance().getSeconds();
                 while(wait > 0 && !stop){
-                    Thread.sleep(1000);
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        //e.printStackTrace();
+                    }
                     wait--;
                 }
 
@@ -208,6 +218,7 @@ public class Server {
                     else rotator.rotate();
                 }
             }
+            stop = true;
             try {
                 rtsp.stop();
             } catch (Exception e) {
@@ -216,8 +227,6 @@ public class Server {
                 rotator.close();
             }
         } catch (IOException e) {
-            log.log(Level.SEVERE, ExceptionUtils.getStackTrace(e));
-        } catch (InterruptedException e) {
             log.log(Level.SEVERE, ExceptionUtils.getStackTrace(e));
         } catch (SQLException e) {
             log.log(Level.SEVERE, ExceptionUtils.getStackTrace(e));

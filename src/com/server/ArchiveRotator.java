@@ -16,7 +16,7 @@ import java.util.logging.Logger;
  *
  */
 public class ArchiveRotator extends OutputStreamHolder {
-    private static Logger log = Logger.getLogger(ArchiveRotator.class.getName());
+    private static Logger log = Logger.getLogger("main");
     private Cam cam;
     Archive archive = null;
 

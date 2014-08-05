@@ -112,12 +112,17 @@ public class Server {
     }
 
     private void http(Cam cam){
+        ArchiveRotator rotator = new ArchiveRotator(cam);
+        URL url = null;
         try {
-            ArchiveRotator rotator = new ArchiveRotator(cam);
+            url = new URL(cam.getUrl().toString());
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+            return;
+        }
+        final HTTPReceiver HTTPReceiver = new HTTPReceiver(url, rotator);
+        try {
             rotator.rotate();
-            URL url = new URL(cam.getUrl().toString());
-            final HTTPReceiver HTTPReceiver = new HTTPReceiver(url, rotator);
-
             HTTPReceiver.play();
 
             while (!stop){
@@ -133,13 +138,7 @@ public class Server {
                 else
                     break;
             }
-
-            HTTPReceiver.stop();
-            rotator.close();
-
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (MalformedURLException e) {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
@@ -149,11 +148,19 @@ public class Server {
             e.printStackTrace();
         } finally {
             stop = true;
+            HTTPReceiver.stop();
+            try {
+                rotator.close();
+            } catch (IOException e) {
+                log.warning(e.getMessage());
+            }
         }
     }
 
     private void rtsp(Cam cam){
         final Rtsp rtsp = new Rtsp();
+
+        ArchiveRotator rotator = new ArchiveRotator(cam);
 
         try {
             //rtsp.setDebug(Settings.getInstance().isDebug());
@@ -194,7 +201,6 @@ public class Server {
             }
 
             OutputStream[] outs = new OutputStream[4];
-            ArchiveRotator rotator = new ArchiveRotator(cam);
             if(fmtp != null) rotator.rotate(fmtpBuffer.toByteArray());
             else rotator.rotate();
             //save only video
@@ -218,20 +224,18 @@ public class Server {
                     else rotator.rotate();
                 }
             }
-            stop = true;
-            try {
-                rtsp.stop();
-            } catch (Exception e) {
-                log.log(Level.SEVERE, ExceptionUtils.getStackTrace(e));
-            } finally {
-                rotator.close();
-            }
         } catch (IOException e) {
             log.log(Level.SEVERE, ExceptionUtils.getStackTrace(e));
         } catch (SQLException e) {
             log.log(Level.SEVERE, ExceptionUtils.getStackTrace(e));
         } finally {
             stop = true;
+            rtsp.stop();
+            try {
+                rotator.close();
+            } catch (IOException e) {
+                log.warning(e.getMessage());
+            }
         }
     }
 

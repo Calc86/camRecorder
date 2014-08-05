@@ -34,14 +34,18 @@ public class ArchiveRotator extends OutputStreamHolder {
         rotate(null);
     }
 
-    public synchronized void rotate(byte[] preWrite) throws SQLException, IOException {
-        Archive oldArchive = archive;
-
+    private void createArchive() throws SQLException {
         archive = new Archive();
         archive.setCid(cam.getId());
         archive.setStart(new Date().getTime());
         archive.insert();
         log.info("new archive id: " + archive.getId());
+    }
+
+    public synchronized void rotate(byte[] preWrite) throws SQLException, IOException {
+        Archive oldArchive = archive;
+
+        createArchive();
 
         FileOutputStream fOut = createFile(archive);
         BufferedOutputStream bufferedOut = new BufferedOutputStream(fOut, 5*1024*1024);
@@ -49,9 +53,20 @@ public class ArchiveRotator extends OutputStreamHolder {
 
         change(bufferedOut);
 
-        if(oldArchive != null){
+        move(oldArchive);
+    }
+
+    private void move(Archive archive){
+        if(archive != null){
             FFmpeg ffmpeg = new FFmpeg();
-            ffmpeg.move(oldArchive.getFileName());
+            ffmpeg.move(archive.getFileName());
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        move(archive);
+        archive = null;
+        super.close();
     }
 }

@@ -235,7 +235,7 @@ public class MainFrame {
             @Override
             public String format(LogRecord record) {
                 Date d = new Date();
-                SimpleDateFormat date = new SimpleDateFormat("[YYYY-MM-dd hh:mm:ss] ");
+                SimpleDateFormat date = new SimpleDateFormat("[yyyy-MM-dd hh:mm:ss] ");
                 return date.format(d) + record.getLevel() + "("
                         + record.getSourceClassName() + " "
                         + record.getSourceMethodName() + "): "

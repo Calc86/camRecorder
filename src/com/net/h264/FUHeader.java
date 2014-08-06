@@ -7,7 +7,7 @@ package com.net.h264;
 public class FUHeader {
     private byte fu;
 
-    public FUHeader(byte fu) {
+    public void set(byte fu){
         this.fu = fu;
     }
 

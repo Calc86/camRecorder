@@ -42,6 +42,10 @@ public class Archive extends Model {
         stop = rs.getInt("STOP");
     }
 
+    public String getFileName(){
+        return cid + "_" + getId();
+    }
+
     public long getCid() {
         return cid;
     }

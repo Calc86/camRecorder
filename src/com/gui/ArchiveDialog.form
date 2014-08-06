@@ -110,25 +110,21 @@
                     <properties/>
                     <border type="none"/>
                     <children>
-                      <component id="b2346" class="javax.swing.JTextField" binding="textFrom">
-                        <constraints>
-                          <grid row="1" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false">
-                            <preferred-size width="150" height="-1"/>
-                          </grid>
-                        </constraints>
-                        <properties/>
-                      </component>
-                      <component id="91254" class="javax.swing.JTextField" binding="textTo">
-                        <constraints>
-                          <grid row="2" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false">
-                            <preferred-size width="150" height="-1"/>
-                          </grid>
-                        </constraints>
-                        <properties/>
-                      </component>
                       <component id="8a4bf" class="javax.swing.JComboBox" binding="comboBoxCam">
                         <constraints>
                           <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="2" anchor="8" fill="1" indent="0" use-parent-layout="false"/>
+                        </constraints>
+                        <properties/>
+                      </component>
+                      <component id="ff870" class="javax.swing.JSpinner" binding="spinnerTimeFrom" custom-create="true">
+                        <constraints>
+                          <grid row="1" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false"/>
+                        </constraints>
+                        <properties/>
+                      </component>
+                      <component id="9afc5" class="javax.swing.JSpinner" binding="spinnerTimeTo" custom-create="true">
+                        <constraints>
+                          <grid row="2" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false"/>
                         </constraints>
                         <properties/>
                       </component>
@@ -173,17 +169,7 @@
               <text value=""/>
             </properties>
           </component>
-          <component id="3edca" class="javax.swing.JToolBar$Separator">
-            <constraints/>
-            <properties/>
-          </component>
-          <component id="39ca9" class="javax.swing.JButton" binding="buttonApply">
-            <constraints/>
-            <properties>
-              <text value=""/>
-            </properties>
-          </component>
-          <component id="7cbfc" class="javax.swing.JButton" binding="buttonReset">
+          <component id="39ca9" class="javax.swing.JButton" binding="buttonMergeAndPlay">
             <constraints/>
             <properties>
               <text value=""/>

@@ -11,7 +11,7 @@ public class NAL {
 
     byte nal;
 
-    public NAL(byte nal) {
+    public void set(byte nal){
         this.nal = nal;
     }
 

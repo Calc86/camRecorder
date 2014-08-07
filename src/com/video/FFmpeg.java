@@ -102,6 +102,22 @@ public class FFmpeg {
             Runtime rt = Runtime.getRuntime();
             Process pr = rt.exec(command);
 
+            InputStream stderr = pr.getErrorStream();
+            InputStreamReader esr = new InputStreamReader(stderr);
+            BufferedReader ebr = new BufferedReader(esr);
+
+            InputStream stdin = pr.getInputStream();
+            InputStreamReader isr = new InputStreamReader(stdin);
+            BufferedReader ibr = new BufferedReader(isr);
+
+            String line = null;
+            System.out.println("<OUTPUT>");
+
+            while ( (line = ebr.readLine()) != null)
+                System.out.println(line);
+
+            System.out.println("</OUTPUT>");
+
             int exitVal = pr.waitFor();
             if(exitVal == 0)
                 deleteOld(archive);

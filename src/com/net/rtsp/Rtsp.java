@@ -78,7 +78,7 @@ public class Rtsp {
         socket.setReceiveBufferSize(5 * 1024 * 1024);   //всё равно Window Size 65536 * 4
         log.info("socket receive buffer size: " + socket.getReceiveBufferSize());
 
-        in = socket.getInputStream();
+        in = new AsyncBufferedInputStream(socket.getInputStream());
         out = socket.getOutputStream();
     }
 
@@ -282,7 +282,8 @@ public class Rtsp {
         }
 
         lastReply = new Reply(reply);
-        if(log.isLoggable(Level.FINE)) log.fine(reply);
+        log.info(reply);
+        //if(log.isLoggable(Level.FINE)) log.fine(reply);
     }
 
     private void send(String packet) throws IOException {
@@ -784,7 +785,8 @@ public class Rtsp {
             log.warning(ExceptionUtils.getStackTrace(e));
         }
 
-        process.stop();
+        if(process != null)
+            process.stop();
     }
 
     public Reply getLastReply() {

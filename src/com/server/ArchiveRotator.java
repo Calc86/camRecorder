@@ -53,14 +53,13 @@ public class ArchiveRotator extends OutputStreamHolder {
 
         change(bufferedOut);
 
-        move(oldArchive);
+        if(oldArchive != null)
+            move(oldArchive);
     }
 
     private void move(Archive archive){
-        if(archive != null){
-            FFmpeg ffmpeg = new FFmpeg();
-            ffmpeg.move(archive.getFileName());
-        }
+        FFmpeg ffmpeg = new FFmpeg();
+        ffmpeg.move(archive.getFileName());
     }
 
     @Override

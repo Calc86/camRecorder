@@ -75,7 +75,7 @@ public class Rtsp {
         Socket socket = new Socket(host, port);
         localRtspPort = socket.getLocalPort();
         socket.setSoTimeout(SOCKET_READ_TIMEOUT);
-        socket.setReceiveBufferSize(5 * 1024 * 1024);
+        socket.setReceiveBufferSize(5 * 1024 * 1024);   //всё равно Window Size 65536 * 4
         log.info("socket receive buffer size: " + socket.getReceiveBufferSize());
 
         in = socket.getInputStream();

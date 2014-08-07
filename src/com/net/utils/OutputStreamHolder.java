@@ -50,8 +50,8 @@ public class OutputStreamHolder extends OutputStream {
         }*/
 
     public synchronized void change(final OutputStream out) throws IOException {
-        flush();
-        close();
+        this.out.flush();
+        this.out.close();
         this.out = out;
     }
 }

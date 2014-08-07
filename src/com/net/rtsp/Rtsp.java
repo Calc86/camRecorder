@@ -640,6 +640,7 @@ public class Rtsp {
 
             Profiler profiler = new Profiler(0);
             Counter counter = new Counter(uri.getHost());
+            if(log.isLoggable(Level.INFO)) counter.setPrint(true);
             while(!stop){
                 IRaw raw = rtp;
                 //читаем фрейм
@@ -683,6 +684,7 @@ public class Rtsp {
                 //profiler.print(0);
                 if(os[ch] == null) continue;
 
+                //Нужна была синхронизация, так как os[ch] менялся, сейчас он постоянно rotator
                 synchronized (os[ch]){
                     raw.writeRawToStream(os[ch]);
                 }

@@ -62,6 +62,7 @@ public class AsyncBufferedInputStream extends InputStream {
     public void stop(){
         stop = true;
         reader.interrupt();
+        data.add(new byte[0]);  //нулевой байт, чтобы основной поток прочел наш -1
     }
 
     public boolean isStop() {

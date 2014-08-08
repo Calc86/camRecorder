@@ -100,8 +100,6 @@ public class H264RTP implements IRaw{
     public void writeRawToStream(OutputStream out) throws IOException {
         try {
             writeRawH264toStream(out);
-        } catch (IOException e) {
-            e.printStackTrace();
         } catch (NotImplementedException e) {
             System.out.println(e.getMessage());
         }

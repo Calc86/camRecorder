@@ -164,11 +164,13 @@ public class AddDialog1 extends JDialog {
             profiles.add(profile);
         }
 
+        comboBoxSources.removeAll();
         for(Profile profile : profiles){
             comboBoxSources.addItem(new OnvifProfile(profile));
         }
 
         if(comboBoxSources.getItemCount() > 0) comboBoxSources.setEnabled(true);
+        else comboBoxSources.setEnabled(false);
         onComboBoxSources();
     }
 

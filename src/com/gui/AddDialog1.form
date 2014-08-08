@@ -57,7 +57,7 @@
         <properties/>
         <border type="none"/>
         <children>
-          <tabbedpane id="49726" binding="tabbedPane1" default-binding="true">
+          <tabbedpane id="49726" binding="tabbedPane">
             <constraints>
               <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="3" hsize-policy="3" anchor="0" fill="3" indent="0" use-parent-layout="false">
                 <preferred-size width="200" height="100"/>
@@ -79,10 +79,10 @@
                       <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="0" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
                     </constraints>
                     <properties>
-                      <text value="Label"/>
+                      <text value="Url:"/>
                     </properties>
                   </component>
-                  <component id="5764a" class="javax.swing.JTextField" binding="textField1" default-binding="true">
+                  <component id="5764a" class="javax.swing.JTextField" binding="textFieldUrl">
                     <constraints>
                       <grid row="0" column="1" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false">
                         <preferred-size width="150" height="-1"/>
@@ -105,26 +105,28 @@
                       <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="0" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
                     </constraints>
                     <properties>
-                      <text value="Label"/>
+                      <text value="Onvif-url:"/>
                     </properties>
                   </component>
-                  <component id="e0a3" class="javax.swing.JTextField" binding="textField2" default-binding="true">
+                  <component id="e0a3" class="javax.swing.JTextField" binding="textFieldOnvifUrl">
                     <constraints>
                       <grid row="0" column="1" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false">
                         <preferred-size width="150" height="-1"/>
                       </grid>
                     </constraints>
-                    <properties/>
+                    <properties>
+                      <text value="http://example.host/onvif/device_service"/>
+                    </properties>
                   </component>
-                  <component id="7326d" class="javax.swing.JButton" binding="button1" default-binding="true">
+                  <component id="7326d" class="javax.swing.JButton" binding="buttonGet">
                     <constraints>
                       <grid row="0" column="2" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
                     </constraints>
                     <properties>
-                      <text value="Button"/>
+                      <text value="Get"/>
                     </properties>
                   </component>
-                  <component id="1483e" class="javax.swing.JComboBox" binding="comboBox1" default-binding="true">
+                  <component id="1483e" class="javax.swing.JComboBox" binding="comboBoxSources">
                     <constraints>
                       <grid row="1" column="1" row-span="1" col-span="2" vsize-policy="0" hsize-policy="2" anchor="8" fill="1" indent="0" use-parent-layout="false"/>
                     </constraints>

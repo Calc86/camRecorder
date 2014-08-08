@@ -11,8 +11,6 @@ import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.FileInputStream;
-import java.io.IOException;
 import java.net.URI;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
@@ -93,7 +91,7 @@ public class MainFrame {
         buttonAdd.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                AddDialog dialog = new AddDialog(frame);
+                AddDialog1 dialog = new AddDialog1(frame);
 
                 URI url = dialog.getUrl();
 

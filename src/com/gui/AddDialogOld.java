@@ -11,12 +11,12 @@ import java.net.URISyntaxException;
  * Created by calc on 22.07.14.
  *
  */
-public class AddDialog extends JDialog {
+public class AddDialogOld extends JDialog {
     private JTextField textField;
 
     private URI url = null;
 
-    public AddDialog(Frame owner) {
+    public AddDialogOld(Frame owner) {
         super(owner, "Add", true);
 
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
@@ -33,10 +33,10 @@ public class AddDialog extends JDialog {
             public void actionPerformed(ActionEvent e) {
                 try {
                     url = new URI(textField.getText());
-                    AddDialog.this.dispose();
+                    AddDialogOld.this.dispose();
                 } catch (URISyntaxException e1) {
                     e1.printStackTrace();
-                    JOptionPane.showMessageDialog(AddDialog.this, "Wrong url", "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(AddDialogOld.this, "Wrong url", "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         });

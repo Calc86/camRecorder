@@ -42,12 +42,6 @@ public class AsyncBufferedInputStream extends InputStream {
 
     @Override
     public int read() throws IOException {
-        //нужно до read весь наш буффер и умереть.
-        if(isStop() && data.size() == 0){
-            if(exception != null) throw exception;
-            else return -1;
-        }
-
         if(current == null || nextPos >= current.length){
             try {
                 current = data.take();
@@ -56,6 +50,13 @@ public class AsyncBufferedInputStream extends InputStream {
                 e.printStackTrace();
             }
         }
+
+        //нужно до read весь наш буффер и умереть.
+        if(isStop() && data.size() == 0){
+            if(exception != null) throw exception;
+            else return -1;
+        }
+        
         return current[nextPos++] & BIT._8; // unsigned byte
     }
 

@@ -78,7 +78,8 @@ public class Rtsp {
         socket.setReceiveBufferSize(5 * 1024 * 1024);   //всё равно Window Size 65536 * 4
         log.info("socket receive buffer size: " + socket.getReceiveBufferSize());
 
-        in = new AsyncBufferedInputStream(socket.getInputStream());
+        //in = new AsyncBufferedInputStream(socket.getInputStream());
+        in = socket.getInputStream();
         out = socket.getOutputStream();
     }
 
@@ -323,7 +324,7 @@ public class Rtsp {
         }
 
         protected Thread createGetParameterThread(){
-            return new Thread(new Runnable() {
+            Thread t = new Thread(new Runnable() {
                 @Override
                 public void run() {
                     while(!stop){
@@ -341,6 +342,9 @@ public class Rtsp {
                     }
                 }
             });
+
+            t.setName("GetParameter for " + uri);
+            return t;
         }
     }
 
@@ -565,6 +569,7 @@ public class Rtsp {
                 }
             });
 
+            t.setName("processAll interleaved");
             t.start();
         }
 

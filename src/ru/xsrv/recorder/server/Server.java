@@ -73,7 +73,9 @@ public class Server {
             stop = false;
 
             for(Cam c : list){
-                threads.add(new Thread(new CamHolder(c)));
+                Thread t = new Thread(new CamHolder(c));
+                t.setName("Server thread for cam " + c.getId());
+                threads.add(t);
             }
 
             for(Thread t : threads){

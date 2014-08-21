@@ -58,6 +58,10 @@ public class ArchiveRotator extends OutputStreamHolder {
     }
 
     private void move(Archive archive){
+        if(archive == null) {
+            log.info("Try to move null archive!");
+            return;
+        }
         FFmpeg ffmpeg = new FFmpeg();
         ffmpeg.move(archive.getFileName());
     }
